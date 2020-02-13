@@ -1,6 +1,4 @@
 """Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
-# so far can add or remove points w/ saved coordinates
-# but no connection/child data
 # no zoom/pan/rescale ability
 # and no file output
 
@@ -11,28 +9,33 @@ from PIL import Image, ImageTk
 root = tk.Tk()
 w = tk.Canvas(root, width=1000, height=1000)
 
-tree = []  # temp 'tree' (list of nodes)
-
-# class Tree(object):
-#     def __init__(self):
-#         self.nodes = []
-
-#     def add_node(self, coord, shapeval):
-#         node = Node(coord, shapeval)
-
 
 class Node(object):
-    def __init__(self, coords, shapeval):
+    def __init__(self, coords, shape_val):
         self.coords = coords  # (x,y) tuple
-        self.children = []  # format [level, number] x n
-        self.shapeval = shapeval  # canvas object ID
+        self.shape_val = shape_val  # canvas object ID
         self.is_selected = False
-        self.leftNode = None
-        self.middleNode = None
-        self.rightNode = None
+        self.children = []
 
     def add_child(self, obj):
-        self.children.append(obj)
+        if (len(self.children) < 3):
+            self.children.append(obj)
+        else:
+            print("Too many children assigned to point", self)
+
+
+class Tree(object):
+    def __init__(self):
+        self.nodes = []
+
+    def add_node(self, obj):
+        for n in tree.nodes:
+            if n.is_selected:
+                n.add_child(obj)
+        self.nodes.append(obj)  # last -- to avoid assigning child to itself
+
+
+tree = Tree()
 
 
 def delete(event):
@@ -40,12 +43,28 @@ def delete(event):
     global tree
     newtree = []
 
-    for node in tree:
-        if node.is_selected:
-            w.delete(node.shapeval)
+    for n in tree.nodes:
+        if n.is_selected:
+            w.delete(n.shape_val)
         else:
-            newtree.append(node)
-    tree = newtree
+            newtree.append(n)
+    tree.nodes = newtree
+
+
+def clear_all(event):
+    """Deselect all selected nodes."""
+    global tree
+    for n in tree.nodes:
+        n.is_selected = False
+        w.itemconfig(n.shape_val, fill="white")
+
+
+def select_all(event):
+    """Select all nodes."""
+    global tree
+    for n in tree.nodes:
+        n.is_selected = True
+        w.itemconfig(n.shape_val, fill="red")
 
 
 def click(event):
@@ -54,21 +73,26 @@ def click(event):
     click_x = event.x
     click_y = event.y
 
-    for node in tree:  # check click proximity to existing points
-        if ((abs(node.coords[0]-click_x)) < 10) and ((abs(node.coords[1]-click_y)) < 10):
-            if node.is_selected:  # deselect a point
-                node.is_selected = False
-                w.itemconfig(node.shapeval, fill="white")
+    for n in tree.nodes:  # check click proximity to existing points
+        if ((abs(n.coords[0]-click_x)) < 10) and ((abs(n.coords[1]-click_y)) < 10):
+            if n.is_selected:  # deselect a point
+                n.is_selected = False
+                w.itemconfig(n.shape_val, fill="white")
             else:  # select a new point
-                node.is_selected = True
-                w.itemconfig(node.shapeval, fill="red")
+                n.is_selected = True
+                w.itemconfig(n.shape_val, fill="red")
             return
 
-    # place a new point
-    # (for some reason, shapevals start at 2)
-    idx = w.create_oval(click_x, click_y, click_x+2, click_y+2, width=0, fill="white")
+    # place a new point, selected by default
+    # (note: for some reason, idx/shape_val starts at 2)
+    idx = w.create_oval(click_x, click_y, click_x+2, click_y+2, width=0, fill="red")
     point = Node((click_x, click_y), idx)
-    tree.append(point)
+    tree.add_node(point)
+    for n in tree.nodes:  # deselect all previous points
+        n.is_selected = False
+        w.itemconfig(n.shape_val, fill="white")
+    point.is_selected = True
+    w.itemconfig(point.shape_val, fill="red")
 
 
 img = askopenfilename(parent=root, initialdir="./", title="Select an image to annotate")
@@ -80,5 +104,7 @@ w.create_image(0, 0, image=pic, anchor="nw")
 
 w.bind("<Button 1>", click)
 w.bind("d", delete)
+w.bind("c", clear_all)
+w.bind("a", select_all)
 
 root.mainloop()
