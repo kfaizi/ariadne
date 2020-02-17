@@ -1,7 +1,6 @@
 """Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
 
 # TO-DO:
-# add indicator for whether override is on or off
 # show point coordinates on mouse hover
 # take user input to name output file
 
@@ -169,11 +168,14 @@ def select_parent(event):
 
 def override(event):
     """Override proximity limit on node placement, to allow closer tags."""
-    global prox_override
+    global prox_override, text
+
     if prox_override:
         prox_override = False
+        w.delete(text)
     else:
         prox_override = True
+        text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
 
 
 def place_node(event):
@@ -225,6 +227,8 @@ w.bind("r", override)
 
 selected_all = False
 prox_override = False
+
+text = None
 
 tree = Tree()
 root.mainloop()
