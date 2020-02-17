@@ -1,12 +1,19 @@
 """Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
-# no zoom/pan/rescale ability
-# and no file output
+
+# TO-DO:
+# show point coordinates on mouse hover
+# take user input to name output file
+# keybind a point proximity override (to allow tagging emergent LRs)
+
+
+# zoom/pan/rescale
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk
+from queue import Queue
 
-root = tk.Tk()
+root = tk.Tk()  # not to be confused with other appearances of 'root' :)
 w = tk.Canvas(root, width=1000, height=1000)
 
 
@@ -15,43 +22,122 @@ class Node(object):
         self.coords = coords  # (x,y) tuple
         self.shape_val = shape_val  # canvas object ID
         self.is_selected = False
+        self.is_top = False
+        self.is_visited = False
+        self.depth = None
         self.children = []
 
     def add_child(self, obj):
+        global tree
+
         if (len(self.children) < 3):
             self.children.append(obj)
         else:
-            print("Too many children assigned to point", self)
+            print("All children already assigned to point", self)
+            w.delete(obj.shape_val)
 
 
 class Tree(object):
     def __init__(self):
         self.nodes = []
+        self.edges = []
 
     def add_node(self, obj):
         for n in tree.nodes:
             if n.is_selected:
                 n.add_child(obj)
-        self.nodes.append(obj)  # last -- to avoid assigning child to itself
+        if not tree.nodes:  # if no nodes yet assigned
+            obj.is_top = True
+        self.nodes.append(obj)
+
+    def make_file(self, root, output):
+        """Traverse the tree breadth-first and output data to file."""
+        q = Queue()
+        q.put(root)
+        root.depth = 0
+
+        while not q.empty():  # assign depths; level order traversal
+            curr = q.get()
+
+            for i in range(len(curr.children)):
+                kid = curr.children[i]
+                kid.depth = curr.depth + 1
+                q.put(kid)
+
+        # sort all nodes by depth for printing
+        ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
+
+        with open(output, "a") as h:
+            tracker = root.depth
+            kidcount = 0
+            h.write(f"## Level: {root.depth}")
+            h.write("\n")
+
+            for i in range(len(ordered_tree)):
+                curr = ordered_tree[i]
+
+                if tracker != curr.depth:
+                    h.write(f"## Level: {curr.depth}")
+                    h.write("\n")
+                    tracker = curr.depth
+                    kidcount = 0
+
+                h.write(f"{curr.coords[0]} {curr.coords[1]} 1;".rstrip("\n"))
+
+                for i in range(len(curr.children)):
+                    kid = curr.children[i]
+                    h.write(f" [{kid.depth},{kidcount}]".rstrip("\n"))
+                    kidcount += 1
+
+                h.write("\n")
 
 
 tree = Tree()
 
 
-def delete(event):
-    """Remove selected nodes."""
+def show_tree(event):
+    global tree
+
+    if not tree.edges:
+        for n in tree.nodes:
+            for kid in n.children:
+                x = w.create_line(kid.coords[0], kid.coords[1], n.coords[0], n.coords[1])
+                tree.edges.append(x)
+    else:
+        for x in tree.edges:
+            w.delete(x)
+        tree.edges = []
+
+
+def generate_file(event):
+    global tree
+    for n in tree.nodes:
+        if n.is_top:
+            tree.make_file(n, "/path/to/output.txt")
+
+
+def delete(event):  # probably remove from final iteration
+    """Remove selected nodes, including parent references."""
     global tree
     newtree = []
+
+    for n in tree.nodes:
+        new_children = []
+        for kid in n.children:
+            if not kid.is_selected:
+                new_children.append(kid)
+        n.children = new_children
 
     for n in tree.nodes:
         if n.is_selected:
             w.delete(n.shape_val)
         else:
             newtree.append(n)
+
     tree.nodes = newtree
 
 
-def clear_all(event):
+def clear_all(event):  # probably remove from final iteration
     """Deselect all selected nodes."""
     global tree
     for n in tree.nodes:
@@ -59,7 +145,7 @@ def clear_all(event):
         w.itemconfig(n.shape_val, fill="white")
 
 
-def select_all(event):
+def select_all(event):  # probably remove from final iteration
     """Select all nodes."""
     global tree
     for n in tree.nodes:
@@ -67,7 +153,7 @@ def select_all(event):
         w.itemconfig(n.shape_val, fill="red")
 
 
-def click(event):
+def click(event):  # TO-DO: add proximity override keybind
     """Place or select points on click."""
     w.focus_set()  # keep focus on the canvas (allows keybinds)
     click_x = event.x
@@ -75,11 +161,12 @@ def click(event):
 
     for n in tree.nodes:  # check click proximity to existing points
         if ((abs(n.coords[0]-click_x)) < 10) and ((abs(n.coords[1]-click_y)) < 10):
-            if n.is_selected:  # deselect a point
-                n.is_selected = False
-                w.itemconfig(n.shape_val, fill="white")
-            else:  # select a new point
-                n.is_selected = True
+
+            if not n.is_selected:  # to select a new point
+                for m in tree.nodes:  # first deselect all points
+                    m.is_selected = False
+                    w.itemconfig(m.shape_val, fill="white")
+                n.is_selected = True  # then select desired point
                 w.itemconfig(n.shape_val, fill="red")
             return
 
@@ -106,5 +193,7 @@ w.bind("<Button 1>", click)
 w.bind("d", delete)
 w.bind("c", clear_all)
 w.bind("a", select_all)
+w.bind("m", generate_file)
+w.bind("t", show_tree)
 
 root.mainloop()
