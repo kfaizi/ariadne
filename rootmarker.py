@@ -1,12 +1,12 @@
 """Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
 
 # TO-DO:
+# add indicator for whether override is on or off
 # show point coordinates on mouse hover
 # take user input to name output file
-# keybind a point proximity override (to allow tagging emergent LRs)
-
 
 # zoom/pan/rescale
+
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
@@ -82,7 +82,7 @@ class Tree(object):
                     tracker = curr.depth
                     kidcount = 0
 
-                h.write(f"{curr.coords[0]} {curr.coords[1]} 1;".rstrip("\n"))
+                h.write(f"{curr.coords[0]} {curr.coords[1]} 0;".rstrip("\n"))
 
                 for i in range(len(curr.children)):
                     kid = curr.children[i]
@@ -90,9 +90,6 @@ class Tree(object):
                     kidcount += 1
 
                 h.write("\n")
-
-
-tree = Tree()
 
 
 def show_tree(event):
@@ -137,38 +134,66 @@ def delete(event):  # probably remove from final iteration
     tree.nodes = newtree
 
 
-def clear_all(event):  # probably remove from final iteration
-    """Deselect all selected nodes."""
-    global tree
-    for n in tree.nodes:
-        n.is_selected = False
-        w.itemconfig(n.shape_val, fill="white")
-
-
 def select_all(event):  # probably remove from final iteration
-    """Select all nodes."""
+    """Select/deselect all nodes."""
     global tree
+    global selected_all
+
+    if not selected_all:
+        for n in tree.nodes:
+            n.is_selected = True
+            w.itemconfig(n.shape_val, fill="red")
+        selected_all = True
+    else:
+        for n in tree.nodes:
+            n.is_selected = False
+            w.itemconfig(n.shape_val, fill="white")
+        selected_all = False
+
+
+def select_parent(event):
+    """Select the parent of the last placed point."""
+    global tree
+
     for n in tree.nodes:
-        n.is_selected = True
-        w.itemconfig(n.shape_val, fill="red")
+        for kid in n.children:
+            if kid.is_selected:
+                kid.is_selected = False
+                w.itemconfig(kid.shape_val, fill="white")
+
+                n.is_selected = True
+                w.itemconfig(n.shape_val, fill="red")
+
+                return
 
 
-def click(event):  # TO-DO: add proximity override keybind
+def override(event):
+    """Override proximity limit on node placement, to allow closer tags."""
+    global prox_override
+    if prox_override:
+        prox_override = False
+    else:
+        prox_override = True
+
+
+def place_node(event):
     """Place or select points on click."""
+    global prox_override
     w.focus_set()  # keep focus on the canvas (allows keybinds)
     click_x = event.x
     click_y = event.y
 
-    for n in tree.nodes:  # check click proximity to existing points
-        if ((abs(n.coords[0]-click_x)) < 10) and ((abs(n.coords[1]-click_y)) < 10):
+    if not prox_override:
+        for n in tree.nodes:  # check click proximity to existing points
+            if ((abs(n.coords[0]-click_x)) < 10) and ((abs(n.coords[1]-click_y)) < 10):
 
-            if not n.is_selected:  # to select a new point
-                for m in tree.nodes:  # first deselect all points
-                    m.is_selected = False
-                    w.itemconfig(m.shape_val, fill="white")
-                n.is_selected = True  # then select desired point
-                w.itemconfig(n.shape_val, fill="red")
-            return
+                if not n.is_selected:  # to select a new point
+                    for m in tree.nodes:  # first deselect all points
+                        m.is_selected = False
+                        w.itemconfig(m.shape_val, fill="white")
+                    n.is_selected = True  # then select desired point
+                    w.itemconfig(n.shape_val, fill="red")
+                return
 
     # place a new point, selected by default
     # (note: for some reason, idx/shape_val starts at 2)
@@ -189,11 +214,17 @@ pic = ImageTk.PhotoImage(img)
 w.pack()
 w.create_image(0, 0, image=pic, anchor="nw")
 
-w.bind("<Button 1>", click)
+# keybinds
+w.bind("<Button 1>", place_node)
+w.bind("<Button 2>", select_parent)
 w.bind("d", delete)
-w.bind("c", clear_all)
 w.bind("a", select_all)
 w.bind("m", generate_file)
 w.bind("t", show_tree)
+w.bind("r", override)
 
+selected_all = False
+prox_override = False
+
+tree = Tree()
 root.mainloop()
