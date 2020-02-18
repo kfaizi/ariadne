@@ -1,24 +1,26 @@
 """Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
 
 # TO-DO:
-# show point coordinates on mouse hover
+# GIF support (incl output file for each day -- EZ)
+
 # take user input to name output file
-
-# zoom/pan/rescale
-
+# standardize image scaling (nxn)
+# show point coordinates on mouse hover?
+# zoom/pan/rescale?
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageSequence
 from queue import Queue
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w = tk.Canvas(root, width=1000, height=1000)
+w = tk.Canvas(root, cursor="plus", width=2000, height=2000)
 
 
 class Node(object):
     def __init__(self, coords, shape_val):
         self.coords = coords  # (x,y) tuple
+        self.relcoords = None  # (x,y) relative to root node
         self.shape_val = shape_val  # canvas object ID
         self.is_selected = False
         self.is_top = False
@@ -57,6 +59,7 @@ class Tree(object):
 
         while not q.empty():  # assign depths; level order traversal
             curr = q.get()
+            curr.relcoords = (curr.coords[0]-root.coords[0], curr.coords[1]-root.coords[1])
 
             for i in range(len(curr.children)):
                 kid = curr.children[i]
@@ -67,8 +70,8 @@ class Tree(object):
         ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
 
         with open(output, "a") as h:
-            tracker = root.depth
-            kidcount = 0
+            tracker = root.depth  # track depth changes to output correct level
+            kidcount = 0  # track number of child nodes per level
             h.write(f"## Level: {root.depth}")
             h.write("\n")
 
@@ -81,7 +84,7 @@ class Tree(object):
                     tracker = curr.depth
                     kidcount = 0
 
-                h.write(f"{curr.coords[0]} {curr.coords[1]} 0;".rstrip("\n"))
+                h.write(f"{curr.relcoords[0]} {curr.relcoords[1]} 0;".rstrip("\n"))
 
                 for i in range(len(curr.children)):
                     kid = curr.children[i]
@@ -97,7 +100,7 @@ def show_tree(event):
     if not tree.edges:
         for n in tree.nodes:
             for kid in n.children:
-                x = w.create_line(kid.coords[0], kid.coords[1], n.coords[0], n.coords[1])
+                x = w.create_line(kid.coords[0], kid.coords[1], n.coords[0], n.coords[1], fill="white")
                 tree.edges.append(x)
     else:
         for x in tree.edges:
@@ -106,10 +109,11 @@ def show_tree(event):
 
 
 def generate_file(event):
+    """Output annotation results to a text file."""
     global tree
     for n in tree.nodes:
         if n.is_top:
-            tree.make_file(n, "/path/to/output.txt")
+            tree.make_file(n, "/Users/kianfaizi/Desktop/output.txt")
 
 
 def delete(event):  # probably remove from final iteration
@@ -181,7 +185,10 @@ def override(event):
 def place_node(event):
     """Place or select points on click."""
     global prox_override
+
+    w.config(cursor="plus")
     w.focus_set()  # keep focus on the canvas (allows keybinds)
+
     click_x = event.x
     click_y = event.y
 
@@ -209,16 +216,27 @@ def place_node(event):
     w.itemconfig(point.shape_val, fill="red")
 
 
-img = askopenfilename(parent=root, initialdir="./", title="Select an image to annotate")
+# def next_day(event):
+#     """Show the next frame in the GIF."""
+#     global img
+#     try:
+#         nextframe = img.seek(img.tell()+1)
+#         w.create_image(0, 0, image=nextframe, anchor="nw")
+#     except EOFError:
+#         pass
+
+
+img = askopenfilename(parent=root, initialdir="./", title="Select a file")
 img = Image.open(img)
-img = img.resize((1500, 1500))
-pic = ImageTk.PhotoImage(img)
+img = img.resize((2000, 2000))
+frame = ImageTk.PhotoImage(img)
 w.pack()
-w.create_image(0, 0, image=pic, anchor="nw")
+w.create_image(0, 0, image=frame, anchor="nw")
 
 # keybinds
 w.bind("<Button 1>", place_node)
 w.bind("<Button 2>", select_parent)
+# w.bind("e", next_day)
 w.bind("d", delete)
 w.bind("a", select_all)
 w.bind("m", generate_file)
