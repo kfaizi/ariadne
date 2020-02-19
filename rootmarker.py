@@ -1,20 +1,27 @@
 """Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
 
 # TO-DO:
-# GIF support (incl output file for each day -- EZ)
+# add 5 sec message when output created successfully
+# add designation for which plant is being segmented
 
-# take user input to name output file
+# THINK ABOUT:
 # standardize image scaling (nxn)
+# do we need backtracking? This will be inefficient (less important),
+#   and might affect indexing or iterator position (more important)
 # show point coordinates on mouse hover?
 # zoom/pan/rescale?
+
+# note: if 'plus' cursor changes to a normal arrow, it's due to loss of focus
+# fix by clicking on the top bar of the image window
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk, ImageSequence
 from queue import Queue
+from pathlib import Path
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w = tk.Canvas(root, cursor="plus", width=2000, height=2000)
+w = tk.Canvas(root, cursor="plus", width=1000, height=1000)
 
 
 class Node(object):
@@ -42,6 +49,7 @@ class Tree(object):
     def __init__(self):
         self.nodes = []
         self.edges = []
+        self.day = 1
 
     def add_node(self, obj):
         for n in tree.nodes:
@@ -51,7 +59,7 @@ class Tree(object):
             obj.is_top = True
         self.nodes.append(obj)
 
-    def make_file(self, root, output):
+    def make_file(self, root):
         """Traverse the tree breadth-first and output data to file."""
         q = Queue()
         q.put(root)
@@ -69,7 +77,11 @@ class Tree(object):
         # sort all nodes by depth for printing
         ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
 
-        with open(output, "a") as h:
+        # prepare output file
+        output_name = f"day{self.day}_output.txt"
+        output_path = Path("/Users/kianfaizi/Desktop/", output_name)
+
+        with open(output_path, "a") as h:
             tracker = root.depth  # track depth changes to output correct level
             kidcount = 0  # track number of child nodes per level
             h.write(f"## Level: {root.depth}")
@@ -113,7 +125,7 @@ def generate_file(event):
     global tree
     for n in tree.nodes:
         if n.is_top:
-            tree.make_file(n, "/Users/kianfaizi/Desktop/output.txt")
+            tree.make_file(n)
 
 
 def delete(event):  # probably remove from final iteration
@@ -172,22 +184,26 @@ def select_parent(event):
 
 def override(event):
     """Override proximity limit on node placement, to allow closer tags."""
-    global prox_override, text
+    global prox_override, override_text
 
     if prox_override:
         prox_override = False
-        w.delete(text)
+        w.itemconfig(override_text, state="hidden")
     else:
         prox_override = True
-        text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
+        if override_text:
+            w.itemconfig(override_text, state="normal")
+        else:
+            override_text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
+    w.pack()
 
 
 def place_node(event):
     """Place or select points on click."""
     global prox_override
 
-    w.config(cursor="plus")
     w.focus_set()  # keep focus on the canvas (allows keybinds)
+    w.config(cursor="plus")
 
     click_x = event.x
     click_y = event.y
@@ -205,7 +221,7 @@ def place_node(event):
                 return
 
     # place a new point, selected by default
-    # (note: for some reason, idx/shape_val starts at 2)
+    # first node shape_val is 2, because initial image is 1
     idx = w.create_oval(click_x, click_y, click_x+2, click_y+2, width=0, fill="red")
     point = Node((click_x, click_y), idx)
     tree.add_node(point)
@@ -216,27 +232,45 @@ def place_node(event):
     w.itemconfig(point.shape_val, fill="red")
 
 
-# def next_day(event):
-#     """Show the next frame in the GIF."""
-#     global img
-#     try:
-#         nextframe = img.seek(img.tell()+1)
-#         w.create_image(0, 0, image=nextframe, anchor="nw")
-#     except EOFError:
-#         pass
+def next_day(event):
+    """Show the next frame in the GIF."""
+    global img, frame_index, tree, frame_id, newpic, end_text
+
+    iterframes = ImageSequence.Iterator(img)
+
+    try:
+        generate_file(event)  # before advancing, output data so far
+        frame_index += 1
+        tree.day = frame_index + 1
+        newframe = iterframes[frame_index].resize((1000, 1000))
+        newpic = ImageTk.PhotoImage(newframe)
+
+        new_frame_id = w.create_image(0, 0, image=newpic, anchor="nw")
+        w.delete(frame_id)
+        w.tag_lower(new_frame_id)
+        frame_id = new_frame_id
+
+    except IndexError:  # end of GIF
+        end_text = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
+
+    w.pack()
 
 
 img = askopenfilename(parent=root, initialdir="./", title="Select a file")
 img = Image.open(img)
-img = img.resize((2000, 2000))
-frame = ImageTk.PhotoImage(img)
+img_shift = img.resize((1000, 1000))
+frame = ImageTk.PhotoImage(img_shift)
+
+frame_index = 0
+frame_id = w.create_image(0, 0, image=frame, anchor="nw")
+
 w.pack()
-w.create_image(0, 0, image=frame, anchor="nw")
+w.focus_force()  # fix cursor issue the first time
 
 # keybinds
 w.bind("<Button 1>", place_node)
 w.bind("<Button 2>", select_parent)
-# w.bind("e", next_day)
+w.bind("e", next_day)
 w.bind("d", delete)
 w.bind("a", select_all)
 w.bind("m", generate_file)
@@ -245,8 +279,8 @@ w.bind("r", override)
 
 selected_all = False
 prox_override = False
-
-text = None
+override_text = None  # prox override indicator
+end_text = None  # end-of-GIF indicator
 
 tree = Tree()
 root.mainloop()
