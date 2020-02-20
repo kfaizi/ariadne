@@ -1,13 +1,15 @@
-"""Test GUI script for annotating RSA scans. Kian Faizi Feb-11-2020."""
+"""GUI for segmenting RSA scans. Kian Faizi Feb-11-2020."""
 
 # TO-DO:
-# add 5 sec message when output created successfully
-# add designation for which plant is being segmented
-
-# THINK ABOUT:
-# standardize image scaling (nxn)
 # do we need backtracking? This will be inefficient (less important),
 #   and might affect indexing or iterator position (more important)
+# maybe swap 'end of GIF!' with a constant "day n_i/n" indicator
+# dealing with multiple plants/trees
+# build standalone executable when finished
+
+# THINK ABOUT:
+# add quick message when output created successfully
+# standardize image scaling (nxn)
 # show point coordinates on mouse hover?
 # zoom/pan/rescale?
 
@@ -17,11 +19,10 @@
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk, ImageSequence
-from queue import Queue
 from pathlib import Path
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w = tk.Canvas(root, cursor="plus", width=1000, height=1000)
+w = tk.Canvas(root, cursor="plus", width=2000, height=2000)
 
 
 class Node(object):
@@ -49,32 +50,26 @@ class Tree(object):
     def __init__(self):
         self.nodes = []
         self.edges = []
-        self.day = 1
+        self.day = 1  # initially
 
-    def add_node(self, obj):
-        for n in tree.nodes:
-            if n.is_selected:
-                n.add_child(obj)
-        if not tree.nodes:  # if no nodes yet assigned
-            obj.is_top = True
-        self.nodes.append(obj)
+    def add_node(self, add):
 
-    def make_file(self, root):
-        """Traverse the tree breadth-first and output data to file."""
-        q = Queue()
-        q.put(root)
-        root.depth = 0
+        if tree.nodes:
+            for n in tree.nodes:
+                if n.is_selected:
+                    add.depth = n.depth + 1
+                    n.add_child(add)
+        else:  # if no nodes yet assigned
+            add.is_top = True
+            add.depth = 0
 
-        while not q.empty():  # assign depths; level order traversal
-            curr = q.get()
-            curr.relcoords = (curr.coords[0]-root.coords[0], curr.coords[1]-root.coords[1])
+        self.nodes.append(add)  # finally, add to tree (avoid self-assignment)
+        # and since first element of nodes will always be root node:
+        add.relcoords = (add.coords[0]-(tree.nodes[0].coords[0]), add.coords[1]-(tree.nodes[0].coords[1]))
 
-            for i in range(len(curr.children)):
-                kid = curr.children[i]
-                kid.depth = curr.depth + 1
-                q.put(kid)
-
-        # sort all nodes by depth for printing
+    def make_file(self):
+        """Output tree data to file."""
+        # sort all nodes by depth for printing (stable)
         ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
 
         # prepare output file
@@ -82,9 +77,9 @@ class Tree(object):
         output_path = Path("/Users/kianfaizi/Desktop/", output_name)
 
         with open(output_path, "a") as h:
-            tracker = root.depth  # track depth changes to output correct level
+            tracker = 0  # track depth changes to output correct level
             kidcount = 0  # track number of child nodes per level
-            h.write(f"## Level: {root.depth}")
+            h.write(f"## Level: 0")
             h.write("\n")
 
             for i in range(len(ordered_tree)):
@@ -123,9 +118,7 @@ def show_tree(event):
 def generate_file(event):
     """Output annotation results to a text file."""
     global tree
-    for n in tree.nodes:
-        if n.is_top:
-            tree.make_file(n)
+    tree.make_file()
 
 
 def delete(event):  # probably remove from final iteration
@@ -182,6 +175,14 @@ def select_parent(event):
                 return
 
 
+def show_relcoords(event):
+    """Display the (x,y) coordinates of the point clicked, relative to top."""
+    for n in tree.nodes:  # check click proximity to existing points
+        if ((abs(n.coords[0]-event.x)) < 10) and ((abs(n.coords[1]-event.y)) < 10):
+            w.create_text(event.x, event.y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
+            return
+
+
 def override(event):
     """Override proximity limit on node placement, to allow closer tags."""
     global prox_override, override_text
@@ -234,15 +235,13 @@ def place_node(event):
 
 def next_day(event):
     """Show the next frame in the GIF."""
-    global img, frame_index, tree, frame_id, newpic, end_text
-
-    iterframes = ImageSequence.Iterator(img)
+    global iterframes, frame_index, tree, frame_id, newpic, end_text
 
     try:
-        generate_file(event)  # before advancing, output data so far
+        # generate_file(event)  # before advancing, output data so far
         frame_index += 1
         tree.day = frame_index + 1
-        newframe = iterframes[frame_index].resize((1000, 1000))
+        newframe = iterframes[frame_index].resize((2000, 2000))
         newpic = ImageTk.PhotoImage(newframe)
 
         new_frame_id = w.create_image(0, 0, image=newpic, anchor="nw")
@@ -258,7 +257,9 @@ def next_day(event):
 
 img = askopenfilename(parent=root, initialdir="./", title="Select a file")
 img = Image.open(img)
-img_shift = img.resize((1000, 1000))
+iterframes = ImageSequence.Iterator(img)
+
+img_shift = img.resize((2000, 2000))
 frame = ImageTk.PhotoImage(img_shift)
 
 frame_index = 0
@@ -270,10 +271,12 @@ w.focus_force()  # fix cursor issue the first time
 # keybinds
 w.bind("<Button 1>", place_node)
 w.bind("<Button 2>", select_parent)
+w.bind("<Button 3>", show_relcoords)
 w.bind("e", next_day)
+# w.bind("q", previous_day)
 w.bind("d", delete)
 w.bind("a", select_all)
-w.bind("m", generate_file)
+w.bind("g", generate_file)
 w.bind("t", show_tree)
 w.bind("r", override)
 
