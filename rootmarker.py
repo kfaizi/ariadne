@@ -1,10 +1,9 @@
 """GUI for segmenting RSA scans. Kian Faizi Feb-11-2020."""
 
 # TO-DO:
-# do we need backtracking? This will be inefficient (less important),
-#   and might affect indexing or iterator position (more important)
 # maybe swap 'end of GIF!' with a constant "day n_i/n" indicator
 # dealing with multiple plants/trees
+# refactor nested conditionals into states
 # build standalone executable
 
 # THINK ABOUT:
@@ -23,7 +22,9 @@ from pathlib import Path
 
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w = tk.Canvas(root, cursor="plus", width=2000, height=2000)
+w_width = 1000
+w_height = 1000
+w = tk.Canvas(root, cursor="plus", width=w_width, height=w_height)
 
 
 class Node(object):
@@ -277,13 +278,10 @@ def override(event):
 
     if prox_override:
         prox_override = False
-        w.itemconfig(override_text, state="hidden")
+        w.delete(override_text)
     else:
         prox_override = True
-        if override_text:
-            w.itemconfig(override_text, state="normal")
-        else:
-            override_text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
+        override_text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
     w.pack()
 
 
@@ -296,7 +294,7 @@ def insert(event):
 
     if inserting:
         inserting = False
-        w.itemconfig(inserting_text, state="hidden")
+        w.delete(inserting_text)
     else:
         selected_count = 0
         for n in tree.nodes:
@@ -311,10 +309,7 @@ def insert(event):
             return
 
         inserting = True
-        if inserting_text:
-            w.itemconfig(inserting_text, state="normal")
-        else:
-            inserting_text = w.create_text(10, 40, anchor="nw", text="insertion_mode=ON", fill="white")
+        inserting_text = w.create_text(10, 40, anchor="nw", text="insertion_mode=ON", fill="white")
 
     w.pack()
 
@@ -326,11 +321,16 @@ def place_node(event):
     w.focus_set()  # keep focus on the canvas (allows keybinds)
     w.config(cursor="plus")
 
+
     if inserting:  # choose the new point to be inserted
         idx = w.create_oval(event.x, event.y, event.x+2, event.y+2, width=0, fill="white")
         point = Node((event.x, event.y), idx)
-        point.is_selected = False
         tree.add_node(point)
+        for n in tree.nodes:  # deselect all previous points
+            n.is_selected = False
+            w.itemconfig(n.shape_val, fill="white")
+        point.is_selected = True
+        w.itemconfig(point.shape_val, fill="red")
         return
 
     if not prox_override:
@@ -359,13 +359,10 @@ def place_node(event):
 
 def next_day(event):
     """Show the next frame in the GIF."""
-    global iterframes, frame_index, tree, frame_id, newpic, end_text
+    global iterframes, frame_index, tree, frame_id, newpic, start_text, end_text
 
     try:
-        # generate_file(event)  # before advancing, output data so far
-        frame_index += 1
-        tree.day = frame_index + 1
-        newframe = iterframes[frame_index].resize((2000, 2000))
+        newframe = iterframes[frame_index+1].resize((w_width, w_height))
         newpic = ImageTk.PhotoImage(newframe)
 
         new_frame_id = w.create_image(0, 0, image=newpic, anchor="nw")
@@ -373,8 +370,41 @@ def next_day(event):
         w.tag_lower(new_frame_id)
         frame_id = new_frame_id
 
+        frame_index += 1
+        tree.day = frame_index + 1
+
+        w.delete(start_text)
+        start_text = None
+
     except IndexError:  # end of GIF
-        end_text = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
+        if end_text is None:
+            end_text = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
+
+    w.pack()
+
+
+def previous_day(event):
+    """Show the previous frame in the GIF."""
+    global iterframes, frame_index, tree, frame_id, newpic, start_text, end_text
+
+    try:
+        newframe = iterframes[frame_index-1].resize((w_width, w_height))
+        newpic = ImageTk.PhotoImage(newframe)
+
+        new_frame_id = w.create_image(0, 0, image=newpic, anchor="nw")
+        w.delete(frame_id)
+        w.tag_lower(new_frame_id)
+        frame_id = new_frame_id
+
+        frame_index -= 1
+        tree.day = frame_index + 1
+
+        w.delete(end_text)
+        end_text = None
+
+    except IndexError:  # start of GIF
+        if start_text is None:
+            start_text = w.create_text(10, 25, anchor="nw", text="start of GIF!", fill="white")
 
     w.pack()
 
@@ -383,7 +413,7 @@ img = askopenfilename(parent=root, initialdir="./", title="Select a file")
 img = Image.open(img)
 iterframes = ImageSequence.Iterator(img)
 
-img_shift = img.resize((2000, 2000))
+img_shift = img.resize((w_width, w_height))
 frame = ImageTk.PhotoImage(img_shift)
 
 frame_index = 0
@@ -397,7 +427,7 @@ w.bind("<Button 1>", place_node)
 w.bind("<Button 2>", select_parent)
 w.bind("<Button 3>", show_relcoords)
 w.bind("e", next_day)
-# w.bind("q", previous_day)
+w.bind("q", previous_day)
 w.bind("d", delete)
 w.bind("a", select_all)
 w.bind("g", generate_file)
@@ -409,7 +439,8 @@ selected_all = False
 prox_override = False
 override_text = None  # prox override indicator
 inserting = False
-inserting_text = None  # insertion indicator
+inserting_text = None  # insertion mode indicator
+start_text = None  # start-of-GIF-indicator
 end_text = None  # end-of-GIF indicator
 
 tree = Tree()
