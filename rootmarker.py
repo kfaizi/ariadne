@@ -1,19 +1,25 @@
-"""GUI for segmenting RSA scans. Kian Faizi Feb-11-2020."""
+"""GUI for segmenting RSA scans. Kian Faizi Feb-11-2020.
 
-# TO-DO:
-# maybe swap 'end of GIF!' with a constant "day n_i/n" indicator
-# dealing with multiple plants/trees
-# refactor nested conditionals into states
-# build standalone executable
+Ternary tree is a big biological assumption -- how valid?
 
-# THINK ABOUT:
-# add quick message when output created successfully
-# standardize image scaling (nxn)
-# show point coordinates on mouse hover?
-# zoom/pan/rescale?
+-Can't make changes to tree when stepping back; if you goof, you restart
+-Can't 'insert' node anywhere other than along mid children
+-If 'plus' cursor changes to normal arrow, it's due to loss of focus;
+fix it by clicking on the top bar of the image/canvas window
 
-# note: if 'plus' cursor changes to a normal arrow, it's due to loss of focus
-# fix by clicking on the top bar of the image window
+> When do secondary LRs emerge?
+
+TO-DO:
+Mark multiple plants/plate
+  eg keybind 'next plant' func to instantiate new tree
+
+Refactor nested conditionals (states?)
+Delete show relcoords on re-click
+add quick message when output created successfully
+standardize image scaling (nxn). Basically normalize relcoords by dimensions
+zoom/pan/rescale?
+"""
+
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
@@ -38,8 +44,7 @@ class Node(object):
         self.left = None
         self.mid = None
         self.right = None
-        self.first = None
-
+        self.first = None  # to track the order L/R children were added in
 
     def add_child(self, obj):
         global tree
@@ -60,15 +65,16 @@ class Node(object):
                 self.mid = obj
 
             elif numkids == 1:  # added to enable capturing first direction
-                if (self.coords[0] - obj.coords[0]) > 0:  # first non-mid child is on left
+                if (self.coords[0] - obj.coords[0]) > 0:  # child is on left
                     self.left = obj
                     self.first = "left"
-                elif (self.coords[0] - obj.coords[0]) < 0:  # first non-mid child is on right
+                elif (self.coords[0] - obj.coords[0]) < 0:  # child is on right
                     self.right = obj
                     self.first = "right"
                 else:
-                    # this should not occur
-                    print("wtf")
+                    # ambiguity: both points have same x-coordinates
+                    # add user input to manually mark L/R?
+                    pass
 
             elif numkids < 3:
                 if (self.coords[0] - obj.coords[0]) > 0:  # child is on left
@@ -76,11 +82,20 @@ class Node(object):
                 elif (self.coords[0] - obj.coords[0]) < 0:  # child is on right
                     self.right = obj
                 else:
-                    # this should not occur
-                    print("wtf")
+                    # again, ambiguity
+                    # add user input to manually mark L/R?
+                    pass
             else:
                 print("Error: all 3 children already assigned to point", self)
                 w.delete(obj.shape_val)
+
+    def select(self):
+        self.is_selected = True
+        w.itemconfig(self.shape_val, fill="red", outline="red", width=2)
+
+    def deselect(self):
+        self.is_selected = False
+        w.itemconfig(self.shape_val, fill="white", outline="white", width=0)
 
 
 class Tree(object):
@@ -88,12 +103,15 @@ class Tree(object):
         self.nodes = []
         self.edges = []
         self.day = 1  # initially
+        self.is_shown = False
 
     def add_node(self, obj):
+        global tree_flag
+
         if tree.nodes:
             for n in tree.nodes:
                 if n.is_selected:
-                    obj.depth = n.depth + 1
+                    obj.depth = n.depth + 1  # child is one level lower
                     # since first element of nodes will always be root node:
                     obj.relcoords = (obj.coords[0]-(tree.nodes[0].coords[0]), obj.coords[1]-(tree.nodes[0].coords[1]))
                     n.add_child(obj)
@@ -102,6 +120,26 @@ class Tree(object):
             obj.relcoords = (0,0)
         # finally, add to tree (avoid self-assignment)
         self.nodes.append(obj)
+
+        if inserting:
+            # silly method, fix this later. for now:
+            # 1) delete existing tree
+            for line in tree.edges:
+                w.delete(line)
+            tree.edges = []
+
+            # 2) then redraw it based on new nodes post-insertion
+            for n in tree.nodes:
+                if n.left is not None:
+                    x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    tree.edges.append(x)
+                if n.mid is not None:
+                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    tree.edges.append(x)
+                if n.right is not None:
+                    x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    tree.edges.append(x)
+
 
     def DFS(self, root):
         root.is_visited = True
@@ -160,24 +198,17 @@ class Tree(object):
 
 
 def show_tree(event):
-    global tree
+    global tree, tree_flag
 
-    if not tree.edges:  # if tree not already drawn, draw it
-        for n in tree.nodes:
-            if n.left is not None:
-                x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="white")
-                tree.edges.append(x)
-            if n.mid is not None:
-                x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white")
-                tree.edges.append(x)
-            if n.right is not None:
-                x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="white")
-                tree.edges.append(x)
+    if tree.is_shown is False:
+        tree_flag = "normal"
+        tree.is_shown = True
+    else:
+        tree_flag = "hidden"
+        tree.is_shown = False
 
-    else:  # otherwise, erase it
-        for x in tree.edges:
-            w.delete(x)
-        tree.edges = []
+    for line in tree.edges:
+        w.itemconfig(line, state=f"{tree_flag}")
 
 
 def generate_file(event):
@@ -188,7 +219,7 @@ def generate_file(event):
 
 def delete(event):  # probably remove from final iteration
     """Remove selected nodes, including parent references."""
-    global tree
+    global tree, tree_flag
     newtree = []
 
     ### REFACTOR ###
@@ -203,6 +234,7 @@ def delete(event):  # probably remove from final iteration
         if n.right is not None:
             if n.right.is_selected:
                 n.right = None
+
         # now, check the points themselves
         if n.is_selected:
             w.delete(n.shape_val)
@@ -211,21 +243,37 @@ def delete(event):  # probably remove from final iteration
 
     tree.nodes = newtree
 
+    # silly method, fix this later. for now:
+    # 1) delete existing tree
+
+    for line in tree.edges:
+        w.delete(line)
+    tree.edges = []
+
+    # 2) then redraw it based on new nodes post-deletion
+    for n in tree.nodes:
+        if n.left is not None:
+            x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            tree.edges.append(x)
+        if n.mid is not None:
+            x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            tree.edges.append(x)
+        if n.right is not None:
+            x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            tree.edges.append(x)
+
 
 def select_all(event):  # probably remove from final iteration
     """Select/deselect all nodes."""
-    global tree
-    global selected_all
+    global tree, selected_all
 
     if not selected_all:
         for n in tree.nodes:
-            n.is_selected = True
-            w.itemconfig(n.shape_val, fill="red")
+            n.select()
         selected_all = True
     else:
         for n in tree.nodes:
-            n.is_selected = False
-            w.itemconfig(n.shape_val, fill="white")
+            n.deselect()
         selected_all = False
 
 
@@ -238,29 +286,20 @@ def select_parent(event):
     for n in tree.nodes:
         if n.left is not None:
             if n.left.is_selected:
-                n.left.is_selected = False
-                w.itemconfig(n.left.shape_val, fill="white")
-
-                n.is_selected = True
-                w.itemconfig(n.shape_val, fill="red")
+                n.left.deselect()
+                n.select()
                 return
 
         if n.mid is not None:
             if n.mid.is_selected:
-                n.mid.is_selected = False
-                w.itemconfig(n.mid.shape_val, fill="white")
-
-                n.is_selected = True
-                w.itemconfig(n.shape_val, fill="red")
+                n.mid.deselect()
+                n.select()
                 return
 
         if n.right is not None:
             if n.right.is_selected:
-                n.right.is_selected = False
-                w.itemconfig(n.right.shape_val, fill="white")
-
-                n.is_selected = True
-                w.itemconfig(n.shape_val, fill="red")
+                n.right.deselect()
+                n.select()
                 return
 
 
@@ -287,7 +326,7 @@ def override(event):
 
 def insert(event):
     """Insert a new 'mid' node between 2 existing ones."""
-    # just select the parent for your new node, then call this function.
+    # select the parent for your new node, then call this function.
     # then place the new node.
 
     global inserting, inserting_text
@@ -316,33 +355,41 @@ def insert(event):
 
 def place_node(event):
     """Place or select points on click."""
-    global prox_override
+    global prox_override, tree, tree_flag
 
     w.focus_set()  # keep focus on the canvas (allows keybinds)
     w.config(cursor="plus")
 
+    if selected_all is True and len(tree.nodes) == 0:  # quietly change selected_all flag to False when no points exist (logically)
+        select_all(event)
+    elif selected_all is True and len(tree.nodes) > 0:
+        print("Can't assign child to multiple nodes at once! Select just one and try again.")
+        select_all(event)
+        return
 
     if inserting:  # choose the new point to be inserted
         idx = w.create_oval(event.x, event.y, event.x+2, event.y+2, width=0, fill="white")
         point = Node((event.x, event.y), idx)
+
+        # for insertion mode only, we draw lines in add_child()
         tree.add_node(point)
-        for n in tree.nodes:  # deselect all previous points
-            n.is_selected = False
-            w.itemconfig(n.shape_val, fill="white")
-        point.is_selected = True
-        w.itemconfig(point.shape_val, fill="red")
+
+        for n in tree.nodes:  # deselect all other points
+            n.deselect()
+        point.select()
+
+        insert(event)  # turn off insertion mode after placing new point
+
         return
 
     if not prox_override:
         for n in tree.nodes:  # check click proximity to existing points
             if ((abs(n.coords[0]-event.x)) < 10) and ((abs(n.coords[1]-event.y)) < 10):
 
-                if not n.is_selected:  # to select a new point
+                if not n.is_selected:  # select an unselected point
                     for m in tree.nodes:  # first deselect all points
-                        m.is_selected = False
-                        w.itemconfig(m.shape_val, fill="white")
-                    n.is_selected = True  # then select desired point
-                    w.itemconfig(n.shape_val, fill="red")
+                        m.deselect()
+                    n.select()  # then select chosen point
                 return
 
     # place a new point, selected by default
@@ -350,11 +397,14 @@ def place_node(event):
     idx = w.create_oval(event.x, event.y, event.x+2, event.y+2, width=0, fill="red")
     point = Node((event.x, event.y), idx)
     tree.add_node(point)
-    for n in tree.nodes:  # deselect all previous points
-        n.is_selected = False
-        w.itemconfig(n.shape_val, fill="white")
-    point.is_selected = True
-    w.itemconfig(point.shape_val, fill="red")
+
+    for n in tree.nodes:  # draw new line, and deselect all other points
+        if n.is_selected:  # then n is parent
+            x = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            tree.edges.append(x)
+        n.deselect()
+
+    point.select()
 
 
 def next_day(event):
@@ -442,6 +492,7 @@ inserting = False
 inserting_text = None  # insertion mode indicator
 start_text = None  # start-of-GIF-indicator
 end_text = None  # end-of-GIF indicator
+tree_flag = "hidden"
 
 tree = Tree()
 root.mainloop()
