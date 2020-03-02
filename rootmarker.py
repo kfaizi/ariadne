@@ -1,23 +1,26 @@
 """GUI for segmenting RSA scans. Kian Faizi Feb-11-2020.
 
-Ternary tree is a big biological assumption -- how valid?
-
+-Assumes root = ternary tree
 -Can't make changes to tree when stepping back; if you goof, you restart
--Can't 'insert' node anywhere other than along mid children
+-Can't 'insert' node anywhere other than along mid children (OK for us,
+since no secondary LRs will emerge on our time scale)
 -If 'plus' cursor changes to normal arrow, it's due to loss of focus;
 fix it by clicking on the top bar of the image/canvas window
-
-> When do secondary LRs emerge?
 
 TO-DO:
 Mark multiple plants/plate
   eg keybind 'next plant' func to instantiate new tree
 
 Refactor nested conditionals (states?)
-Delete show relcoords on re-click
+Hide relcoords on re-click
+Cycle through nearby points when selecting:
+- Add flag when visited
+- Cycle thru (False)
+- Reset when a new point is placed or deleted, or if all are selected
 add quick message when output created successfully
 standardize image scaling (nxn). Basically normalize relcoords by dimensions
-zoom/pan/rescale?
+zoom/pan/rescale
+Scroll to select points?
 """
 
 
@@ -28,8 +31,8 @@ from pathlib import Path
 
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w_width = 1000
-w_height = 1000
+w_width = 250
+w_height = 250
 w = tk.Canvas(root, cursor="plus", width=w_width, height=w_height)
 
 
@@ -113,11 +116,11 @@ class Tree(object):
                 if n.is_selected:
                     obj.depth = n.depth + 1  # child is one level lower
                     # since first element of nodes will always be root node:
-                    obj.relcoords = (obj.coords[0]-(tree.nodes[0].coords[0]), obj.coords[1]-(tree.nodes[0].coords[1]))
+                    obj.relcoords = ((obj.coords[0]-(tree.nodes[0].coords[0]))/w_width, (obj.coords[1]-(tree.nodes[0].coords[1]))/w_height)
                     n.add_child(obj)
         else:  # if no nodes yet assigned
             obj.depth = 0
-            obj.relcoords = (0,0)
+            obj.relcoords = (0, 0)
         # finally, add to tree (avoid self-assignment)
         self.nodes.append(obj)
 
