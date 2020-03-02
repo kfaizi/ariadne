@@ -31,8 +31,8 @@ from pathlib import Path
 
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w_width = 250
-w_height = 250
+w_width = 2000
+w_height = 2000
 w = tk.Canvas(root, cursor="plus", width=w_width, height=w_height)
 
 
@@ -158,7 +158,8 @@ class Tree(object):
 
         # prepare output file
         output_name = f"day{self.day}_output.txt"
-        output_path = Path("/Users/kianfaizi/Desktop/", output_name)
+        repo_path = Path("./").resolve()
+        output_path = repo_path.parent / output_name
 
         with open(output_path, "a") as h:
             tracker = 0  # track depth changes to output correct level
