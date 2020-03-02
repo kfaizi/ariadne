@@ -3,6 +3,6 @@ channels:
   - defaults
 dependencies:
   - pillow=7.0.0
-  - python=3.7.3
+  - python=3.7.0
   - pip=19.1.1
   - tk=8.6.8
