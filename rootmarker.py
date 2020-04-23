@@ -1,16 +1,15 @@
 """GUI for segmenting RSA scans. Kian Faizi Feb-11-2020.
 
--Assumes root = ternary tree
--Can't make changes to tree when stepping back; if you goof, you restart
--Can't 'insert' node anywhere other than along mid children (OK for us,
-since no secondary LRs will emerge on our time scale)
+- Can't make changes to tree when stepping back; if you goof, you restart
+- Assumes root = ternary tree. Generalize
+- Not tested on secondary LRs
 -If 'plus' cursor changes to normal arrow, it's due to loss of focus;
 fix it by clicking on the top bar of the image/canvas window
 
 TO-DO:
 Mark multiple plants/plate
-  eg keybind 'next plant' func to instantiate new tree
 
+Put everything into try:except blocks to make errors visible in GUI/dialog?
 Refactor nested conditionals (states?)
 Hide relcoords on re-click
 Cycle through nearby points when selecting:
@@ -18,7 +17,6 @@ Cycle through nearby points when selecting:
 - Cycle thru (False)
 - Reset when a new point is placed or deleted, or if all are selected
 add quick message when output created successfully
-standardize image scaling (nxn). Basically normalize relcoords by dimensions
 zoom/pan/rescale
 Scroll to select points?
 """
@@ -28,11 +26,12 @@ import tkinter as tk
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk, ImageSequence
 from pathlib import Path
+from queue import Queue
 
 
 root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w_width = 2000
-w_height = 2000
+w_width = 1000
+w_height = 1000
 w = tk.Canvas(root, cursor="plus", width=w_width, height=w_height)
 
 
@@ -47,47 +46,49 @@ class Node(object):
         self.left = None
         self.mid = None
         self.right = None
-        self.first = None  # to track the order L/R children were added in
+        self.index = 2  # if the node is a left child, 0; right, 1; mid, 2
+        self.is_PR = True  # primary root
+        self.LR_index = None  # if lateral root, denote by index
 
-    def add_child(self, obj):
+
+    def add_child(self, obj):  # where obj is the node being added
         global tree
 
         if inserting:
-            obj.mid = self.mid  # new point becomes parent of old child
+            obj.mid = self.mid  # new node becomes parent of old child
             self.mid = obj  # and becomes the new child
 
-            # finally, we shift everything downstream a level lower:
+            if self.is_PR is False:  # if inserting on an LR
+                obj.is_PR = False
+
+            # finally, shift everything downstream 1 level lower
             obj.mid.depth += 1
-            # treating obj.mid as the root node, walk subtree to update depths
-            tree.DFS(obj.mid)
+            tree.DFS(obj.mid)  # update depths for subtree with root = obj.mid
 
         else:
             numkids = (3 - [self.left, self.mid, self.right].count(None))
 
             if numkids == 0:
                 self.mid = obj
-
-            elif numkids == 1:  # added to enable capturing first direction
-                if (self.coords[0] - obj.coords[0]) > 0:  # child is on left
-                    self.left = obj
-                    self.first = "left"
-                elif (self.coords[0] - obj.coords[0]) < 0:  # child is on right
-                    self.right = obj
-                    self.first = "right"
-                else:
-                    # ambiguity: both points have same x-coordinates
-                    # add user input to manually mark L/R?
-                    pass
+                if self.is_PR is False:  # if parent is an LR
+                    obj.is_PR = False
 
             elif numkids < 3:
                 if (self.coords[0] - obj.coords[0]) > 0:  # child is on left
                     self.left = obj
+                    obj.index = 0
+
                 elif (self.coords[0] - obj.coords[0]) < 0:  # child is on right
                     self.right = obj
+                    obj.index = 1
+
                 else:
-                    # again, ambiguity
+                    # ambiguity! undefined behavior
                     # add user input to manually mark L/R?
-                    pass
+                    print("Something went wrong.")  # placeholder only
+
+                obj.is_PR = False
+
             else:
                 print("Error: all 3 children already assigned to point", self)
                 w.delete(obj.shape_val)
@@ -105,56 +106,93 @@ class Tree(object):
     def __init__(self):
         self.nodes = []
         self.edges = []
-        self.day = 1  # initially
+        self.day = 1  # day (frame) of timeseries (GIF)
+        self.plant = "A"  # ID of plant on plate (A-E, from left to right)
         self.is_shown = False
+        self.top = None  # node object at top of tree (root node)
 
     def add_node(self, obj):
         global tree_flag
 
-        if tree.nodes:
-            for n in tree.nodes:
+        if self.nodes:
+            for n in self.nodes:
                 if n.is_selected:
                     obj.depth = n.depth + 1  # child is one level lower
-                    # since first element of nodes will always be root node:
-                    obj.relcoords = ((obj.coords[0]-(tree.nodes[0].coords[0]))/w_width, (obj.coords[1]-(tree.nodes[0].coords[1]))/w_height)
+                    # since the first node will always be the root node,
+                    # we calculate relcoords relative to it (nodes[0]):
+                    # note: can normalize by w_width/w_height here!
+                    obj.relcoords = ((obj.coords[0]-(self.nodes[0].coords[0])), (obj.coords[1]-(self.nodes[0].coords[1])))
                     n.add_child(obj)
         else:  # if no nodes yet assigned
             obj.depth = 0
             obj.relcoords = (0, 0)
+            self.top = obj
         # finally, add to tree (avoid self-assignment)
         self.nodes.append(obj)
 
         if inserting:
-            # silly method, fix this later. for now:
+            # silly method, improve this later. for now:
             # 1) delete existing tree
-            for line in tree.edges:
+            for line in self.edges:
                 w.delete(line)
-            tree.edges = []
+            self.edges = []
 
             # 2) then redraw it based on new nodes post-insertion
-            for n in tree.nodes:
+            for n in self.nodes:
                 if n.left is not None:
                     x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
-                    tree.edges.append(x)
-                if n.mid is not None:
-                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
-                    tree.edges.append(x)
+                    self.edges.append(x)
                 if n.right is not None:
                     x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
-                    tree.edges.append(x)
-
+                    self.edges.append(x)
+                if n.mid is not None:
+                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    self.edges.append(x)
 
     def DFS(self, root):
         root.is_visited = True
-        for neighbor in (root.left, root.mid, root.right):
-            if neighbor is not None and neighbor.is_visited is False:
-                neighbor.depth += 1
-                tree.DFS(neighbor)
+        for child in (root.left, root.mid, root.right):
+            if child is not None and child.is_visited is False:
+                child.depth += 1
+                self.DFS(child)
+
+    # def next_tree(self):
+    #     global tree
+
+    def index_LRs(self, root):
+        """Walk the tree breadth-first and assign indices to lateral roots."""
+        q = Queue()
+        q.put(root)
+        LR = 0
+
+        while not q.empty():
+            curr = q.get()
+
+            # LR_index is assigned Left-Right, skipping the PR
+            if curr.left is not None:
+                curr.left.LR_index = LR
+                LR += 1
+                q.put(curr.left)
+            if curr.right is not None:
+                curr.right.LR_index = LR
+                LR += 1
+                q.put(curr.right)
+            if curr.mid is not None:
+                if curr.mid.is_PR is False:
+                    curr.mid.LR_index = curr.LR_index
+                q.put(curr.mid)
 
     def make_file(self):
         """Output tree data to file."""
-        # sort all nodes by depth for printing (stable)
-        ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
+        global tree
+
+        tree.index_LRs(tree.top)
+
+        # sort all nodes by ascending LR index, with PR (LR_index = None) last
+        # this works because False < True, and tuples are sorted element-wise
+        ordered_tree = sorted(self.nodes, key=lambda node: (node.LR_index is None, node.LR_index))
+        # then sort by depth
+        ordered_tree = sorted(ordered_tree, key=lambda node: node.depth)
 
         # prepare output file
         output_name = f"day{self.day}_output.txt"
@@ -178,25 +216,18 @@ class Tree(object):
 
                 h.write(f"{curr.relcoords[0]} {curr.relcoords[1]} 0;".rstrip("\n"))
 
-
-                ## assigning child array indices by order of addition.
-                # since listsort was stable, this is necessary to make
-                #  the indices monotonic
-                if curr.mid is not None:  # mid is always first
-                    h.write(f" [{curr.mid.depth},{kidcount}]".rstrip("\n"))
-                    kidcount += 1
-                if curr.first == "left":
+                # children ordered Left-Right-Mid, since LRs indexed Left-Right
+                if curr.left is not None:
                     h.write(f" [{curr.left.depth},{kidcount}]".rstrip("\n"))
                     kidcount += 1
-                    if curr.right is not None:
-                        h.write(f" [{curr.right.depth},{kidcount}]".rstrip("\n"))
-                        kidcount += 1
-                elif curr.first == "right":
+
+                if curr.right is not None:
                     h.write(f" [{curr.right.depth},{kidcount}]".rstrip("\n"))
                     kidcount += 1
-                    if curr.left is not None:
-                        h.write(f" [{curr.left.depth},{kidcount}]".rstrip("\n"))
-                        kidcount += 1
+
+                if curr.mid is not None:
+                    h.write(f" [{curr.mid.depth},{kidcount}]".rstrip("\n"))
+                    kidcount += 1
 
                 h.write("\n")
 
@@ -498,5 +529,5 @@ start_text = None  # start-of-GIF-indicator
 end_text = None  # end-of-GIF indicator
 tree_flag = "hidden"
 
-tree = Tree()
+tree = Tree()  # instantiate first tree
 root.mainloop()
