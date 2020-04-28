@@ -1,26 +1,20 @@
-"""GUI for segmenting RSA scans. Kian Faizi Feb-11-2020.
+"""GUI for segmenting RSA scans. Copyright 2020 Kian Faizi.
 
-- Can't make changes to tree when stepping back; if you goof, you restart
-- Assumes root = ternary tree. Generalize
-- Not tested on secondary LRs
+(Feb-11-2020 KF)
+
+- Ternary tree vs generalization (secondary LRs)
 -If 'plus' cursor changes to normal arrow, it's due to loss of focus;
 fix it by clicking on the top bar of the image/canvas window
 
 TO-DO:
 Mark multiple plants/plate
-
-Put everything into try:except blocks to make errors visible in GUI/dialog?
-Refactor nested conditionals (states?)
-Hide relcoords on re-click
-Cycle through nearby points when selecting:
-- Add flag when visited
-- Cycle thru (False)
-- Reset when a new point is placed or deleted, or if all are selected
-add quick message when output created successfully
-zoom/pan/rescale
-Scroll to select points?
+try:except for dialog errors?
+refactor nested conditionals (states?)
+hide relcoords on second-click
+cycle through nearby points when selecting?
+add message when output created successfully?
+zoom/pan/rescale?
 """
-
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
@@ -155,9 +149,6 @@ class Tree(object):
             if child is not None and child.is_visited is False:
                 child.depth += 1
                 self.DFS(child)
-
-    # def next_tree(self):
-    #     global tree
 
     def index_LRs(self, root):
         """Walk the tree breadth-first and assign indices to lateral roots."""

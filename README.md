@@ -1,2 +1,2 @@
-# test-roots
-temp repo for RSA analysis
+# rootmarker
+Testing a custom GUI tool for manual image segmentation and RSA analysis
