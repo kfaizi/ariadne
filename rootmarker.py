@@ -1,10 +1,6 @@
 """GUI for segmenting RSA scans. Copyright 2020 Kian Faizi.
 
-(Feb-11-2020 KF)
-
 - Ternary tree vs generalization (secondary LRs)
--If 'plus' cursor changes to normal arrow, it's due to loss of focus;
-fix it by clicking on the top bar of the image/canvas window
 
 TO-DO:
 Mark multiple plants/plate
@@ -13,7 +9,6 @@ refactor nested conditionals (states?)
 hide relcoords on second-click
 cycle through nearby points when selecting?
 add message when output created successfully?
-zoom/pan/rescale?
 """
 
 import tkinter as tk
@@ -23,13 +18,23 @@ from pathlib import Path
 from queue import Queue
 
 
-root = tk.Tk()  # not to be confused with other appearances of 'root' :)
-w_width = 1000
-w_height = 1000
-w = tk.Canvas(root, cursor="plus", width=w_width, height=w_height)
+class Application(tk.Canvas):
+    """The GUI interface."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.cursor = "crosshair"
+        self.width = w_width
+        self.height = w_height
+
+    def display_tooltips(self):
+        pass
 
 
 class Node(object):
+    """An (x,y,0) point along a root."""
+
     def __init__(self, coords, shape_val):
         self.coords = coords  # (x,y) tuple
         self.relcoords = None  # (x,y) relative to root node
@@ -43,7 +48,6 @@ class Node(object):
         self.index = 2  # if the node is a left child, 0; right, 1; mid, 2
         self.is_PR = True  # primary root
         self.LR_index = None  # if lateral root, denote by index
-
 
     def add_child(self, obj):  # where obj is the node being added
         global tree
@@ -97,6 +101,8 @@ class Node(object):
 
 
 class Tree(object):
+    """A hierarchical collection of nodes."""
+
     def __init__(self):
         self.nodes = []
         self.edges = []
@@ -175,9 +181,7 @@ class Tree(object):
 
     def make_file(self):
         """Output tree data to file."""
-        global tree
-
-        tree.index_LRs(tree.top)
+        self.index_LRs(self.top)
 
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
@@ -186,8 +190,9 @@ class Tree(object):
         ordered_tree = sorted(ordered_tree, key=lambda node: node.depth)
 
         # prepare output file
-        output_name = f"day{self.day}_output.txt"
-        repo_path = Path("./").resolve()
+        source = Path(imgpath.replace(" ","")).stem  # input name, no spaces
+        output_name = f"day{self.day}_plantA_{source}.txt" # hardcoded ID :(
+        repo_path = Path("../").resolve()
         output_path = repo_path.parent / output_name
 
         with open(output_path, "a") as h:
@@ -331,9 +336,11 @@ def select_parent(event):
 
 def show_relcoords(event):
     """Display the (x,y) coordinates of the point clicked, relative to top."""
+    x = w.canvasx(event.x)
+    y = w.canvasy(event.y)
     for n in tree.nodes:  # check click proximity to existing points
-        if ((abs(n.coords[0]-event.x)) < 10) and ((abs(n.coords[1]-event.y)) < 10):
-            w.create_text(event.x, event.y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
+        if ((abs(n.coords[0]-x)) < 10) and ((abs(n.coords[1]-y)) < 10):
+            w.create_text(x, y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
             return
 
 
@@ -383,8 +390,10 @@ def place_node(event):
     """Place or select points on click."""
     global prox_override, tree, tree_flag
 
+    x = w.canvasx(event.x)
+    y = w.canvasy(event.y)
     w.focus_set()  # keep focus on the canvas (allows keybinds)
-    w.config(cursor="plus")
+    w.config(cursor="crosshair")
 
     if selected_all is True and len(tree.nodes) == 0:  # quietly change selected_all flag to False when no points exist (logically)
         select_all(event)
@@ -394,8 +403,8 @@ def place_node(event):
         return
 
     if inserting:  # choose the new point to be inserted
-        idx = w.create_oval(event.x, event.y, event.x+2, event.y+2, width=0, fill="white")
-        point = Node((event.x, event.y), idx)
+        idx = w.create_oval(x, y, x+2, y+2, width=0, fill="white")
+        point = Node((x, y), idx)
 
         # for insertion mode only, we draw lines in add_child()
         tree.add_node(point)
@@ -410,7 +419,7 @@ def place_node(event):
 
     if not prox_override:
         for n in tree.nodes:  # check click proximity to existing points
-            if ((abs(n.coords[0]-event.x)) < 10) and ((abs(n.coords[1]-event.y)) < 10):
+            if ((abs(n.coords[0]-x)) < 10) and ((abs(n.coords[1]-y)) < 10):
 
                 if not n.is_selected:  # select an unselected point
                     for m in tree.nodes:  # first deselect all points
@@ -420,14 +429,14 @@ def place_node(event):
 
     # place a new point, selected by default
     # first node shape_val is 2, because initial image is 1
-    idx = w.create_oval(event.x, event.y, event.x+2, event.y+2, width=0, fill="red")
-    point = Node((event.x, event.y), idx)
+    idx = w.create_oval(x, y, x+2, y+2, width=0, fill="red")
+    point = Node((x, y), idx)
     tree.add_node(point)
 
     for n in tree.nodes:  # draw new line, and deselect all other points
         if n.is_selected:  # then n is parent
-            x = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
-            tree.edges.append(x)
+            line = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            tree.edges.append(line)
         n.deselect()
 
     point.select()
@@ -456,8 +465,6 @@ def next_day(event):
         if end_text is None:
             end_text = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
 
-    w.pack()
-
 
 def previous_day(event):
     """Show the previous frame in the GIF."""
@@ -482,11 +489,46 @@ def previous_day(event):
         if start_text is None:
             start_text = w.create_text(10, 25, anchor="nw", text="start of GIF!", fill="white")
 
-    w.pack()
+
+class Application(tk.Frame):
+    """Panning from https://stackoverflow.com/questions/20645532/move-a-tkinter-canvas-with-mouse"""
+    def __init__(self, master):
+        super().__init__(master)
+        self.canvas = tk.Canvas(self, cursor="crosshair", width=w_width, height=w_height, bg="gray", )
+        self.xsb = tk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
+        self.ysb = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.ysb.set, xscrollcommand=self.xsb.set)
+        self.canvas.configure(scrollregion=(0, 0, 3000, 3000))
+
+        self.xsb.grid(row=1, column=0, sticky="ew")
+        self.ysb.grid(row=0, column=1, sticky="ns")
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        # This is what enables scrolling with the mouse:
+        self.canvas.bind("<Control-ButtonPress-1>", self.scroll_start)
+        self.canvas.bind("<Control-B1-Motion>", self.scroll_move)
+
+    def scroll_start(self, event):
+        self.canvas.scan_mark(event.x, event.y)
+
+    def scroll_move(self, event):
+        self.canvas.scan_dragto(event.x, event.y, gain=1)
+
+# scan_dragto(x,y): scrolls widget contents relative to scanning anchor.
+# contents are moved 10x the distance between anchor and given position.
+# scan_mark(x,y): sets scanning anchor.
 
 
-img = askopenfilename(parent=root, initialdir="./", title="Select a file")
-img = Image.open(img)
+base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
+w_width = 2500
+w_height = 2500
+app = Application(base)
+w = app.canvas
+
+imgpath = askopenfilename(parent=base, initialdir="./", title="Select a file")
+img = Image.open(imgpath)
 iterframes = ImageSequence.Iterator(img)
 
 img_shift = img.resize((w_width, w_height))
@@ -495,7 +537,7 @@ frame = ImageTk.PhotoImage(img_shift)
 frame_index = 0
 frame_id = w.create_image(0, 0, image=frame, anchor="nw")
 
-w.pack()
+app.pack()
 w.focus_force()  # fix cursor issue the first time
 
 # keybinds
@@ -511,6 +553,15 @@ w.bind("t", show_tree)
 w.bind("r", override)
 w.bind("i", insert)
 
+#####
+# def motion_track(event):
+#     x,y = event.x, event.y
+#     print(f"{x}, {y}")
+#     print(f"Canvas stuff: {w.canvasx(x)}, {w.canvasy(y)}")
+
+# w.bind("<Motion>", motion_track)
+#######
+
 selected_all = False
 prox_override = False
 override_text = None  # prox override indicator
@@ -521,4 +572,4 @@ end_text = None  # end-of-GIF indicator
 tree_flag = "hidden"
 
 tree = Tree()  # instantiate first tree
-root.mainloop()
+base.mainloop()
