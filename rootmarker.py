@@ -1,13 +1,13 @@
 """GUI for segmenting RSA scans. Copyright 2020 Kian Faizi.
 
-- Ternary tree vs generalization (secondary LRs)
-
 TO-DO:
+n-nary tree
+better UI (sticky visible indicators)
 Mark multiple plants/plate
 try:except for dialog errors?
 refactor nested conditionals (states?)
 hide relcoords on second-click
-cycle through nearby points when selecting?
+easier selection of nearby points
 add message when output created successfully?
 """
 
@@ -16,6 +16,8 @@ from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk, ImageSequence
 from pathlib import Path
 from queue import Queue
+from collections import deque
+import pytest
 
 
 class Application(tk.Canvas):
@@ -24,7 +26,6 @@ class Application(tk.Canvas):
     def __init__(self, master):
         super().__init__(master)
         self.master = master
-        self.cursor = "crosshair"
         self.width = w_width
         self.height = w_height
 
@@ -140,13 +141,13 @@ class Tree(object):
             # 2) then redraw it based on new nodes post-insertion
             for n in self.nodes:
                 if n.left is not None:
-                    x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
                     self.edges.append(x)
                 if n.right is not None:
-                    x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
                     self.edges.append(x)
                 if n.mid is not None:
-                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
                     self.edges.append(x)
 
     def DFS(self, root):
@@ -179,10 +180,9 @@ class Tree(object):
                     curr.mid.LR_index = curr.LR_index
                 q.put(curr.mid)
 
-    def make_file(self):
+    def make_file(self, input_path):
         """Output tree data to file."""
         self.index_LRs(self.top)
-
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
         ordered_tree = sorted(self.nodes, key=lambda node: (node.LR_index is None, node.LR_index))
@@ -190,9 +190,14 @@ class Tree(object):
         ordered_tree = sorted(ordered_tree, key=lambda node: node.depth)
 
         # prepare output file
-        source = Path(imgpath.replace(" ","")).stem  # input name, no spaces
-        output_name = f"day{self.day}_plantA_{source}.txt" # hardcoded ID :(
-        repo_path = Path("../").resolve()
+        source = Path(input_path.replace(" ","")).stem  # input name, no spaces
+        
+        # need this for first unit test; fix
+        #source = input_path.stem
+        
+        
+        output_name = f"day{self.day}_plant{self.plant}_{source}.txt" # hardcoded ID :(
+        repo_path = Path("./").resolve()
         output_path = repo_path.parent / output_name
 
         with open(output_path, "a") as h:
@@ -245,7 +250,7 @@ def show_tree(event):
 def generate_file(event):
     """Output annotation results to a text file."""
     global tree
-    tree.make_file()
+    tree.make_file(imgpath)
 
 
 def delete(event):  # probably remove from final iteration
@@ -284,13 +289,13 @@ def delete(event):  # probably remove from final iteration
     # 2) then redraw it based on new nodes post-deletion
     for n in tree.nodes:
         if n.left is not None:
-            x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
             tree.edges.append(x)
         if n.mid is not None:
-            x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
             tree.edges.append(x)
         if n.right is not None:
-            x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
             tree.edges.append(x)
 
 
@@ -354,7 +359,6 @@ def override(event):
     else:
         prox_override = True
         override_text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
-    w.pack()
 
 
 def insert(event):
@@ -383,8 +387,6 @@ def insert(event):
         inserting = True
         inserting_text = w.create_text(10, 40, anchor="nw", text="insertion_mode=ON", fill="white")
 
-    w.pack()
-
 
 def place_node(event):
     """Place or select points on click."""
@@ -393,7 +395,6 @@ def place_node(event):
     x = w.canvasx(event.x)
     y = w.canvasy(event.y)
     w.focus_set()  # keep focus on the canvas (allows keybinds)
-    w.config(cursor="crosshair")
 
     if selected_all is True and len(tree.nodes) == 0:  # quietly change selected_all flag to False when no points exist (logically)
         select_all(event)
@@ -435,7 +436,7 @@ def place_node(event):
 
     for n in tree.nodes:  # draw new line, and deselect all other points
         if n.is_selected:  # then n is parent
-            line = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="white", state=f"{tree_flag}")
+            line = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
             tree.edges.append(line)
         n.deselect()
 
@@ -444,7 +445,7 @@ def place_node(event):
 
 def next_day(event):
     """Show the next frame in the GIF."""
-    global iterframes, frame_index, tree, frame_id, newpic, start_text, end_text
+    global iterframes, frame_index, tree, frame_id, newpic, day_indicator
 
     try:
         newframe = iterframes[frame_index+1].resize((w_width, w_height))
@@ -457,18 +458,18 @@ def next_day(event):
 
         frame_index += 1
         tree.day = frame_index + 1
-
-        w.delete(start_text)
-        start_text = None
+        
+        w.delete(day_indicator)
+        day_indicator = w.create_text(10, 25, anchor="nw", text=f"Frame #{frame_index+1}", fill="white")
 
     except IndexError:  # end of GIF
-        if end_text is None:
-            end_text = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
+        w.delete(day_indicator)
+        day_indicator = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
 
 
 def previous_day(event):
     """Show the previous frame in the GIF."""
-    global iterframes, frame_index, tree, frame_id, newpic, start_text, end_text
+    global iterframes, frame_index, tree, frame_id, newpic, day_indicator
 
     try:
         newframe = iterframes[frame_index-1].resize((w_width, w_height))
@@ -482,23 +483,23 @@ def previous_day(event):
         frame_index -= 1
         tree.day = frame_index + 1
 
-        w.delete(end_text)
-        end_text = None
+        w.delete(day_indicator)
+        day_indicator = w.create_text(10, 25, anchor="nw", text=f"Frame #{frame_index+1}", fill="white")
 
     except IndexError:  # start of GIF
-        if start_text is None:
-            start_text = w.create_text(10, 25, anchor="nw", text="start of GIF!", fill="white")
+        w.delete(day_indicator)
+        day_indicator = w.create_text(10, 25, anchor="nw", text="start of GIF!", fill="white")
 
 
 class Application(tk.Frame):
     """Panning from https://stackoverflow.com/questions/20645532/move-a-tkinter-canvas-with-mouse"""
     def __init__(self, master):
         super().__init__(master)
-        self.canvas = tk.Canvas(self, cursor="crosshair", width=w_width, height=w_height, bg="gray", )
+        self.canvas = tk.Canvas(self, width=w_width, height=w_height, bg="gray")
         self.xsb = tk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
         self.ysb = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=self.ysb.set, xscrollcommand=self.xsb.set)
-        self.canvas.configure(scrollregion=(0, 0, 3000, 3000))
+        self.canvas.configure(scrollregion=(0, 0, 8000, 8000))
 
         self.xsb.grid(row=1, column=0, sticky="ew")
         self.ysb.grid(row=0, column=1, sticky="ns")
@@ -507,8 +508,8 @@ class Application(tk.Frame):
         self.grid_columnconfigure(0, weight=1)
 
         # This is what enables scrolling with the mouse:
-        self.canvas.bind("<Control-ButtonPress-1>", self.scroll_start)
-        self.canvas.bind("<Control-B1-Motion>", self.scroll_move)
+        self.canvas.bind("<Alt-ButtonPress-1>", self.scroll_start)
+        self.canvas.bind("<Alt-B1-Motion>", self.scroll_move)
 
     def scroll_start(self, event):
         self.canvas.scan_mark(event.x, event.y)
@@ -520,56 +521,57 @@ class Application(tk.Frame):
 # contents are moved 10x the distance between anchor and given position.
 # scan_mark(x,y): sets scanning anchor.
 
-
-base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
-w_width = 2500
-w_height = 2500
-app = Application(base)
-w = app.canvas
-
-imgpath = askopenfilename(parent=base, initialdir="./", title="Select a file")
-img = Image.open(imgpath)
-iterframes = ImageSequence.Iterator(img)
-
-img_shift = img.resize((w_width, w_height))
-frame = ImageTk.PhotoImage(img_shift)
-
-frame_index = 0
-frame_id = w.create_image(0, 0, image=frame, anchor="nw")
-
-app.pack()
-w.focus_force()  # fix cursor issue the first time
-
-# keybinds
-w.bind("<Button 1>", place_node)
-w.bind("<Button 2>", select_parent)
-w.bind("<Button 3>", show_relcoords)
-w.bind("e", next_day)
-w.bind("q", previous_day)
-w.bind("d", delete)
-w.bind("a", select_all)
-w.bind("g", generate_file)
-w.bind("t", show_tree)
-w.bind("r", override)
-w.bind("i", insert)
-
-#####
-# def motion_track(event):
-#     x,y = event.x, event.y
-#     print(f"{x}, {y}")
-#     print(f"Canvas stuff: {w.canvasx(x)}, {w.canvasy(y)}")
-
-# w.bind("<Motion>", motion_track)
-#######
+history = deque(maxlen = 3)
 
 selected_all = False
 prox_override = False
 override_text = None  # prox override indicator
 inserting = False
 inserting_text = None  # insertion mode indicator
-start_text = None  # start-of-GIF-indicator
-end_text = None  # end-of-GIF indicator
+day_indicator = None
 tree_flag = "hidden"
 
+base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
 tree = Tree()  # instantiate first tree
-base.mainloop()
+
+if __name__ == "__main__":
+    w_width = 6608
+    w_height = 6614
+    app = Application(base)
+    w = app.canvas
+
+    imgpath = askopenfilename(parent=base, initialdir="./", title="Select a file")
+    img = Image.open(imgpath)
+    iterframes = ImageSequence.Iterator(img)
+
+    img_shift = img.resize((w_width, w_height))
+    frame = ImageTk.PhotoImage(img_shift)
+
+    frame_index = 0
+    frame_id = w.create_image(0, 0, image=frame, anchor="nw")
+
+    app.pack()
+    w.focus_force()  # fix cursor issue the first time
+
+    # keybinds
+    w.bind("<Button 1>", place_node)
+    w.bind("<Button 2>", show_relcoords)
+    w.bind("e", next_day)
+    w.bind("q", previous_day)
+    w.bind("d", delete)
+    w.bind("a", select_all)
+    w.bind("g", generate_file)
+    w.bind("t", show_tree)
+    w.bind("r", override)
+    w.bind("i", insert)
+
+    #####
+    # def motion_track(event):
+    #     x,y = event.x, event.y
+    #     print(f"{x}, {y}")
+    #     print(f"Canvas stuff: {w.canvasx(x)}, {w.canvasy(y)}")
+
+    # w.bind("<Motion>", motion_track)
+    #######
+
+    base.mainloop()
