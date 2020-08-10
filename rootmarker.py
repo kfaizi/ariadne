@@ -18,19 +18,38 @@ from pathlib import Path
 from queue import Queue
 from collections import deque
 import pytest
+import copy
 
 
-class Application(tk.Canvas):
-    """The GUI interface."""
-
+class Application(tk.Frame):
+    """Panning from https://stackoverflow.com/questions/20645532/move-a-tkinter-canvas-with-mouse"""
     def __init__(self, master):
         super().__init__(master)
-        self.master = master
-        self.width = w_width
-        self.height = w_height
+        self.canvas = tk.Canvas(self, width=w_width, height=w_height, bg="gray")
+        self.xsb = tk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
+        self.ysb = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.ysb.set, xscrollcommand=self.xsb.set)
+        self.canvas.configure(scrollregion=(0, 0, 8000, 8000))
 
-    def display_tooltips(self):
-        pass
+        self.xsb.grid(row=1, column=0, sticky="ew")
+        self.ysb.grid(row=0, column=1, sticky="ns")
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        # This is what enables scrolling with the mouse:
+        self.canvas.bind("<Alt-ButtonPress-1>", self.scroll_start)
+        self.canvas.bind("<Alt-B1-Motion>", self.scroll_move)
+
+    def scroll_start(self, event):
+        self.canvas.scan_mark(event.x, event.y)
+
+    def scroll_move(self, event):
+        self.canvas.scan_dragto(event.x, event.y, gain=1)
+
+# scan_dragto(x,y): scrolls widget contents relative to scanning anchor.
+# contents are moved 10x the distance between anchor and given position.
+# scan_mark(x,y): sets scanning anchor.
 
 
 class Node(object):
@@ -46,6 +65,7 @@ class Node(object):
         self.left = None
         self.mid = None
         self.right = None
+        self.children = None # for the general n-ary case
         self.index = 2  # if the node is a left child, 0; right, 1; mid, 2
         self.is_PR = True  # primary root
         self.LR_index = None  # if lateral root, denote by index
@@ -62,8 +82,8 @@ class Node(object):
 
             # finally, shift everything downstream 1 level lower
             obj.mid.depth += 1
-            tree.DFS(obj.mid)  # update depths for subtree with root = obj.mid
-
+            # update depths for subtree with root = obj.mid
+            tree.DFS(obj.mid)
         else:
             numkids = (3 - [self.left, self.mid, self.right].count(None))
 
@@ -115,6 +135,9 @@ class Tree(object):
     def add_node(self, obj):
         global tree_flag
 
+        hologram = copy.deepcopy(self)
+        history.append(hologram) # save tree each time a node is added
+
         if self.nodes:
             for n in self.nodes:
                 if n.is_selected:
@@ -148,13 +171,15 @@ class Tree(object):
                     self.edges.append(x)
                 if n.mid is not None:
                     x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    self.edges.append(x)
+                    self.edges.append(x)     
 
     def DFS(self, root):
+        """For insertion mode: walk the tree depth-first and increment subtree depths by +1."""
         root.is_visited = True
         for child in (root.left, root.mid, root.right):
             if child is not None and child.is_visited is False:
                 child.depth += 1
+                child.is_visited = True
                 self.DFS(child)
 
     def index_LRs(self, root):
@@ -194,8 +219,7 @@ class Tree(object):
         
         # need this for first unit test; fix
         #source = input_path.stem
-        
-        
+
         output_name = f"day{self.day}_plant{self.plant}_{source}.txt" # hardcoded ID :(
         repo_path = Path("./").resolve()
         output_path = repo_path.parent / output_name
@@ -233,6 +257,41 @@ class Tree(object):
                 h.write("\n")
 
 
+def undo(event):
+    global tree
+
+    try:
+        previous = history.pop()
+        for n in tree.nodes:
+            w.delete(n.shape_val)
+        for e in tree.edges:
+            w.delete(e)
+
+        tree = previous
+        for n in tree.nodes:
+            x = n.coords[0]
+            y = n.coords[1]
+            if not n.is_selected:
+                n.shape_val = w.create_oval(x,y,x+2,y+2,width=0,fill="white")
+            else:
+                n.shape_val = w.create_oval(x,y,x+2,y+2,width=0,fill="red")
+
+            for n in tree.nodes:
+                if n.left is not None:
+                    x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
+                    tree.edges.append(x)
+                if n.mid is not None:
+                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
+                    tree.edges.append(x)
+                if n.right is not None:
+                    x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
+                    tree.edges.append(x)
+
+    except IndexError as e: # end of saved history
+        print(e)
+        pass
+    
+
 def show_tree(event):
     global tree, tree_flag
 
@@ -247,8 +306,7 @@ def show_tree(event):
         w.itemconfig(line, state=f"{tree_flag}")
 
 
-def generate_file(event):
-    """Output annotation results to a text file."""
+def keybind_make_file(event):
     global tree
     tree.make_file(imgpath)
 
@@ -257,6 +315,9 @@ def delete(event):  # probably remove from final iteration
     """Remove selected nodes, including parent references."""
     global tree, tree_flag
     newtree = []
+
+    hologram = copy.deepcopy(tree)
+    history.append(hologram) # save tree each time a node is deleted
 
     ### REFACTOR ###
 
@@ -279,6 +340,7 @@ def delete(event):  # probably remove from final iteration
 
     tree.nodes = newtree
 
+    # refresh:
     # silly method, fix this later. for now:
     # 1) delete existing tree
 
@@ -339,13 +401,15 @@ def select_parent(event):
                 return
 
 
-def show_relcoords(event):
-    """Display the (x,y) coordinates of the point clicked, relative to top."""
+def show_info(event):
+    """Print information for the node clicked."""
     x = w.canvasx(event.x)
     y = w.canvasy(event.y)
     for n in tree.nodes:  # check click proximity to existing points
         if ((abs(n.coords[0]-x)) < 10) and ((abs(n.coords[1]-y)) < 10):
-            w.create_text(x, y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
+            print(f"Node relcoords ({n.relcoords[0]}, {n.relcoords[1]}); node index {n.index}; node shapeval {n.shape_val}; node is selected {n.is_selected}")
+            # w.create_text(x, y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
+            print(w.focus())
             return
 
 
@@ -434,6 +498,8 @@ def place_node(event):
     point = Node((x, y), idx)
     tree.add_node(point)
 
+    print("Adding node to tree", tree)
+
     for n in tree.nodes:  # draw new line, and deselect all other points
         if n.is_selected:  # then n is parent
             line = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
@@ -491,38 +557,6 @@ def previous_day(event):
         day_indicator = w.create_text(10, 25, anchor="nw", text="start of GIF!", fill="white")
 
 
-class Application(tk.Frame):
-    """Panning from https://stackoverflow.com/questions/20645532/move-a-tkinter-canvas-with-mouse"""
-    def __init__(self, master):
-        super().__init__(master)
-        self.canvas = tk.Canvas(self, width=w_width, height=w_height, bg="gray")
-        self.xsb = tk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
-        self.ysb = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.ysb.set, xscrollcommand=self.xsb.set)
-        self.canvas.configure(scrollregion=(0, 0, 8000, 8000))
-
-        self.xsb.grid(row=1, column=0, sticky="ew")
-        self.ysb.grid(row=0, column=1, sticky="ns")
-        self.canvas.grid(row=0, column=0, sticky="nsew")
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-
-        # This is what enables scrolling with the mouse:
-        self.canvas.bind("<Alt-ButtonPress-1>", self.scroll_start)
-        self.canvas.bind("<Alt-B1-Motion>", self.scroll_move)
-
-    def scroll_start(self, event):
-        self.canvas.scan_mark(event.x, event.y)
-
-    def scroll_move(self, event):
-        self.canvas.scan_dragto(event.x, event.y, gain=1)
-
-# scan_dragto(x,y): scrolls widget contents relative to scanning anchor.
-# contents are moved 10x the distance between anchor and given position.
-# scan_mark(x,y): sets scanning anchor.
-
-history = deque(maxlen = 3)
-
 selected_all = False
 prox_override = False
 override_text = None  # prox override indicator
@@ -533,6 +567,8 @@ tree_flag = "hidden"
 
 base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
 tree = Tree()  # instantiate first tree
+
+history = deque(maxlen = 6)
 
 if __name__ == "__main__":
     w_width = 6608
@@ -555,15 +591,16 @@ if __name__ == "__main__":
 
     # keybinds
     w.bind("<Button 1>", place_node)
-    w.bind("<Button 2>", show_relcoords)
+    w.bind("<Button 2>", show_info)
     w.bind("e", next_day)
     w.bind("q", previous_day)
     w.bind("d", delete)
     w.bind("a", select_all)
-    w.bind("g", generate_file)
+    w.bind("g", keybind_make_file)
     w.bind("t", show_tree)
     w.bind("r", override)
     w.bind("i", insert)
+    w.bind("<Control-z>", undo)
 
     #####
     # def motion_track(event):
