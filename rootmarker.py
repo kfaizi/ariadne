@@ -1,12 +1,10 @@
-"""GUI for segmenting RSA scans. Copyright 2020 Kian Faizi.
+"""GUI for segmenting root images from Arabidopsis seedlings grown on agar plates. 
+
+Copyright 2020 Kian Faizi.
 
 TO-DO:
 n-nary tree
-better UI (sticky visible indicators)
-Mark multiple plants/plate
 try:except for dialog errors?
-refactor nested conditionals (states?)
-hide relcoords on second-click
 easier selection of nearby points
 add message when output created successfully?
 """
@@ -414,16 +412,17 @@ def show_info(event):
 
 
 def override(event):
-    """Override proximity limit on node placement, to allow closer tags."""
+    """Override proximity limit on node placement."""
     global prox_override, override_text
 
     if prox_override:
         prox_override = False
-        w.delete(override_text)
+        override_text = ""
     else:
         prox_override = True
-        override_text = w.create_text(10, 10, anchor="nw", text="override=ON", fill="white")
+        override_text = "override=ON"
 
+    # make this update intelligently
 
 def insert(event):
     """Insert a new 'mid' node between 2 existing ones."""
@@ -434,7 +433,7 @@ def insert(event):
 
     if inserting:
         inserting = False
-        w.delete(inserting_text)
+        inserting_text = ""
     else:
         selected_count = 0
         for n in tree.nodes:
@@ -449,7 +448,7 @@ def insert(event):
             return
 
         inserting = True
-        inserting_text = w.create_text(10, 40, anchor="nw", text="insertion_mode=ON", fill="white")
+        inserting_text = "insertion_mode=ON"
 
 
 def place_node(event):
@@ -498,7 +497,6 @@ def place_node(event):
     point = Node((x, y), idx)
     tree.add_node(point)
 
-    print("Adding node to tree", tree)
 
     for n in tree.nodes:  # draw new line, and deselect all other points
         if n.is_selected:  # then n is parent
@@ -525,12 +523,10 @@ def next_day(event):
         frame_index += 1
         tree.day = frame_index + 1
         
-        w.delete(day_indicator)
-        day_indicator = w.create_text(10, 25, anchor="nw", text=f"Frame #{frame_index+1}", fill="white")
+        day_indicator = f"Frame #{frame_index+1}"
 
-    except IndexError:  # end of GIF
-        w.delete(day_indicator)
-        day_indicator = w.create_text(10, 25, anchor="nw", text="end of GIF!", fill="white")
+    except IndexError:
+        day_indicator = "end of GIF!"
 
 
 def previous_day(event):
@@ -549,20 +545,27 @@ def previous_day(event):
         frame_index -= 1
         tree.day = frame_index + 1
 
-        w.delete(day_indicator)
-        day_indicator = w.create_text(10, 25, anchor="nw", text=f"Frame #{frame_index+1}", fill="white")
+        day_indicator = f"Frame #{frame_index+1}"
 
-    except IndexError:  # start of GIF
-        w.delete(day_indicator)
-        day_indicator = w.create_text(10, 25, anchor="nw", text="start of GIF!", fill="white")
+    except IndexError:
+        day_indicator = "start of GIF!"
 
+
+def motion_track(event):
+    """Get the mouse's current canvas coordinates; also, update the status bar."""
+    canvas_coords = (int(w.canvasx(event.x)), int(w.canvasy(event.y)))
+
+    statusbar["text"] = f"{day_indicator}, {canvas_coords}, {override_text}, {inserting_text}"
+
+    # good, but this doesn't update without a movement event -- need to trigger on keybind too
+    # call function w/i each keybound function?
 
 selected_all = False
 prox_override = False
-override_text = None  # prox override indicator
+override_text = ""  # prox override indicator
 inserting = False
-inserting_text = None  # insertion mode indicator
-day_indicator = None
+inserting_text = ""  # insertion mode indicator
+day_indicator = ""  # gif frame
 tree_flag = "hidden"
 
 base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
@@ -570,12 +573,18 @@ tree = Tree()  # instantiate first tree
 
 history = deque(maxlen = 6)
 
+
+
 if __name__ == "__main__":
     w_width = 6608
     w_height = 6614
     app = Application(base)
     w = app.canvas
 
+    statusbar = tk.Label(base, text="", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+    statusbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    # import image
     imgpath = askopenfilename(parent=base, initialdir="./", title="Select a file")
     img = Image.open(imgpath)
     iterframes = ImageSequence.Iterator(img)
@@ -602,13 +611,7 @@ if __name__ == "__main__":
     w.bind("i", insert)
     w.bind("<Control-z>", undo)
 
-    #####
-    # def motion_track(event):
-    #     x,y = event.x, event.y
-    #     print(f"{x}, {y}")
-    #     print(f"Canvas stuff: {w.canvasx(x)}, {w.canvasy(y)}")
+    w.bind("<Motion>", motion_track)
 
-    # w.bind("<Motion>", motion_track)
-    #######
 
     base.mainloop()
