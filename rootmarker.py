@@ -126,7 +126,7 @@ class Tree(object):
         self.nodes = []
         self.edges = []
         self.day = 1  # day (frame) of timeseries (GIF)
-        self.plant = "A"  # ID of plant on plate (A-E, from left to right)
+        self.plant = "TEST"  # ID of plant on plate (A-E, from left to right)
         self.is_shown = False
         self.top = None  # node object at top of tree (root node)
 
@@ -218,7 +218,7 @@ class Tree(object):
         # need this for first unit test; fix
         #source = input_path.stem
 
-        output_name = f"day{self.day}_plant{self.plant}_{source}.txt" # hardcoded ID :(
+        output_name = f"{source}_plant{self.plant}_day{self.day}.txt" # hardcoded ID :(
         repo_path = Path("./").resolve()
         output_path = repo_path.parent / output_name
 
@@ -578,6 +578,8 @@ history = deque(maxlen = 6)
 if __name__ == "__main__":
     w_width = 6608
     w_height = 6614
+    # w_width = 1000
+    # w_height = 1000
     app = Application(base)
     w = app.canvas
 
