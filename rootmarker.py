@@ -180,6 +180,11 @@ class Tree(object):
                 child.is_visited = True
                 self.DFS(child)
 
+        # reset is_visited flags when done!
+        for node in self.nodes:
+            node.is_visited = False
+
+
     def index_LRs(self, root):
         """Walk the tree breadth-first and assign indices to lateral roots."""
         q = Queue()
