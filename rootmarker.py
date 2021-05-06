@@ -35,9 +35,13 @@ class Application(tk.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # This is what enables scrolling with the mouse:
+        # enable scrolling with mouse (linux)
         self.canvas.bind("<Alt-ButtonPress-1>", self.scroll_start)
         self.canvas.bind("<Alt-B1-Motion>", self.scroll_move)
+        
+        # mac keybinds
+        self.canvas.bind("<Control-ButtonPress-1>", self.scroll_start)
+        self.canvas.bind("<Control-B1-Motion>", self.scroll_move)
 
     def scroll_start(self, event):
         self.canvas.scan_mark(event.x, event.y)
@@ -58,12 +62,12 @@ class Node(object):
         self.relcoords = None  # (x,y) relative to root node
         self.shape_val = shape_val  # canvas object ID
         self.is_selected = False
-        self.is_visited = False
+        self.is_visited = False # for DFS
         self.depth = None
         self.left = None
         self.mid = None
         self.right = None
-        self.children = None # for the general n-ary case
+        self.children = None # for the general n-ary case. currently unused
         self.index = 2  # if the node is a left child, 0; right, 1; mid, 2
         self.is_PR = True  # primary root
         self.LR_index = None  # if lateral root, denote by index
