@@ -441,7 +441,7 @@ def pareto_front(G):
     # critical nodes are the main root base and the lateral root tips
     critical_nodes = []
     for u in G.nodes():
-        if u == 1 or G.degree(u) == 1:
+        if G.degree(u) == 1:
             critical_nodes.append(u)
     
     # test: compute the actual mcost, scost for the original plant

@@ -1,13 +1,10 @@
 '''Parse graphs in custom .xyz format, and measure traits.
-Copyright 2020 Kian Faizi.
 Points are stored in a tree using an undirected NetworkX graph.
 Each node has a unique numerical identifier (node_num), and an attribute "pos": an (x,y) coordinate pair corresponding to its position in 2D space.
 Each edge has an attribute "length": the Euclidean distance between the nodes it connects.
 TO-DO:
-Mark terminal points (degree == 1)
 Trait measurement
-Time series?
-Plot graphs for visual inspection?
+Time series
 '''
 
 import argparse
@@ -79,27 +76,38 @@ def show_skel(target):
     nx.draw_networkx(G, pos=layout)
     plt.show()
 
-#show_skel('/home/kian/Lab/output/96_set1_day13_20200329-140102_024_plantE_day8.txt')
-print(make_graph('/home/kian/Lab/analysis/96_set1_day13_20200329-140102_024_plantDAY8_TEST_no_insert_day8.txt'))
+def save_plot(path, name, title):
+    '''Plot a Pareto front and save to .jpg'''
 
+    G = make_graph(path)
+    # check that graph is indeed a tree (acyclic, undirected, connected)
+    assert nx.is_tree(G)
 
-# # check that graph is indeed a tree (acyclic, undirected, connected)
-# assert nx.is_tree(G)
+    mcosts, scosts, actual = pareto_front(G)
 
-# mcosts, scosts, actual = pareto_front(G)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.set_title(title)
+    ax.set_xlabel("Total length", fontsize=15)
+    ax.set_ylabel("Travel distance", fontsize=15)
 
-# plt.plot(mcosts, scosts, 'ro')
-# plt.plot(actual[0], actual[1], 'go')
-# plt.show()
+    plt.plot(mcosts, scosts, marker='s', linestyle='-', markeredgecolor='black')
+    plt.plot(actual[0], actual[1], marker='x', markersize=12)
+    plt.savefig(name, bbox_inches='tight', dpi=300)
 
-# fig, ax = plt.subplots()
-# ax.scatter()
-# ax.set_xlabel("mcosts", fontsize=15)
-# ax.set_ylabel("scosts", fontsize=15)
-# ax.set_title("test pareto front")
-# ax.grid(True)
-# fig.tight_layout()
-# plt.show()
+    #plt.show()
 
-# for mcost, scost in zip(mcosts, scosts):
-#     print(mcost, scost)
+# path, name, title
+targets = [
+    ['/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt', '9-B-13.jpg', '+Fe_B_Day13'],
+    ['/home/kian/Lab/9_20200205-214859_003_plantE_day13.txt', '9-E-13.jpg', '+Fe_E_Day13'],
+    ['/home/kian/Lab/13_20200205-214859_005_plantB_day12.txt', '13-B-12.jpg', '-Fe_B_Day12'],
+    ['/home/kian/Lab/13_20200205-214859_005_plantE_day12.txt', '13-E-12.jpg', '-Fe_E_Day12'],
+    ['/home/kian/Lab/25_20200205-215844_026_plantB_day14.txt', '25-B-14.jpg', '+N_B_Day14'],
+    ['/home/kian/Lab/25_20200205-215844_026_plantD_day14.txt', '25-D-14.jpg', '+N_D_Day14'],
+    ['/home/kian/Lab/29_20200205-215844_028_plantA_day14.txt', '29-A-14.jpg', '-N_A_Day14'],
+    ['/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14.jpg', '-N_B_Day14']
+]
+
+for i in targets:
+    save_plot(i[0], i[1], i[2])
