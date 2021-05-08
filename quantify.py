@@ -11,7 +11,7 @@ import argparse
 import networkx as nx
 import math
 from queue import Queue
-from pareto_functions import pareto_front
+from pareto_functions import pareto_front, random_tree
 import matplotlib.pyplot as plt
 
 # parser = argparse.ArgumentParser(description='select file')
@@ -84,6 +84,7 @@ def save_plot(path, name, title):
     assert nx.is_tree(G)
 
     mcosts, scosts, actual = pareto_front(G)
+    randoms = random_tree(G)
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -93,21 +94,30 @@ def save_plot(path, name, title):
 
     plt.plot(mcosts, scosts, marker='s', linestyle='-', markeredgecolor='black')
     plt.plot(actual[0], actual[1], marker='x', markersize=12)
+    for i in randoms:
+        plt.plot(i[0], i[1], marker='+', color='green', markersize=4)
+
     plt.savefig(name, bbox_inches='tight', dpi=300)
 
     #plt.show()
 
+
 # path, name, title
 targets = [
-    ['/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt', '9-B-13.jpg', '+Fe_B_Day13'],
-    ['/home/kian/Lab/9_20200205-214859_003_plantE_day13.txt', '9-E-13.jpg', '+Fe_E_Day13'],
-    ['/home/kian/Lab/13_20200205-214859_005_plantB_day12.txt', '13-B-12.jpg', '-Fe_B_Day12'],
-    ['/home/kian/Lab/13_20200205-214859_005_plantE_day12.txt', '13-E-12.jpg', '-Fe_E_Day12'],
-    ['/home/kian/Lab/25_20200205-215844_026_plantB_day14.txt', '25-B-14.jpg', '+N_B_Day14'],
-    ['/home/kian/Lab/25_20200205-215844_026_plantD_day14.txt', '25-D-14.jpg', '+N_D_Day14'],
-    ['/home/kian/Lab/29_20200205-215844_028_plantA_day14.txt', '29-A-14.jpg', '-N_A_Day14'],
-    ['/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14.jpg', '-N_B_Day14']
+    ['/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt', '9-B-13-rand.jpg', '+Fe_B_Day13'],
+    ['/home/kian/Lab/9_20200205-214859_003_plantE_day13.txt', '9-E-13-rand.jpg', '+Fe_E_Day13'],
+    ['/home/kian/Lab/13_20200205-214859_005_plantB_day12.txt', '13-B-12-rand.jpg', '-Fe_B_Day12'],
+    ['/home/kian/Lab/13_20200205-214859_005_plantE_day12.txt', '13-E-12-rand.jpg', '-Fe_E_Day12'],
+    ['/home/kian/Lab/25_20200205-215844_026_plantB_day14.txt', '25-B-14-rand.jpg', '+N_B_Day14'],
+    ['/home/kian/Lab/25_20200205-215844_026_plantD_day14.txt', '25-D-14-rand.jpg', '+N_D_Day14'],
+    ['/home/kian/Lab/29_20200205-215844_028_plantA_day14.txt', '29-A-14-rand.jpg', '-N_A_Day14'],
+    ['/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14-rand.jpg', '-N_B_Day14']
 ]
 
 for i in targets:
     save_plot(i[0], i[1], i[2])
+
+#save_plot('/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14.jpg', '-N_B_Day14')
+
+# G = make_graph('/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt')
+# random_tree_crit(G)

@@ -6,6 +6,7 @@ from collections import defaultdict
 from sys import argv
 from scipy.spatial.distance import euclidean
 import argparse
+import random
 
 STEINER_MIDPOINTS = 10
 
@@ -463,3 +464,61 @@ def pareto_front(G):
         scosts.append(scost)
 
     return mcosts, scosts, actual
+
+def random_tree(G):
+    '''
+    Given a graph G, compute 1000 random spanning trees as in Conn et al. 2017.
+    Only consider the critical nodes of G.
+    '''
+    random.seed(a=None)
+    random_trees = []
+    costs = []
+
+    # get critical nodes of G
+    G_critical_nodes = []
+    for i in G.nodes():
+        if G.degree(i) == 1:
+            G_critical_nodes.append(i)
+
+    all_nodes = list(G.nodes.data())
+
+    # dynamically pop random points from G
+    for i in range(1000):
+        G_nodes = []
+        for i in G_critical_nodes:
+            G_nodes.append(all_nodes[i-1])
+        R = nx.Graph() # random tree
+
+        for j in range(len(G_nodes)):
+            # randomly draw 1 node from G
+            size = len(G_nodes)
+            index = random.randrange(size)
+            g = G_nodes[index]
+
+            if len(R.nodes) > 0:
+                # add the new point AND a random edge
+                # get a random node from R
+                r_index = random.randrange(len(R.nodes))
+                r = list(R.nodes)[r_index] 
+                # add the node from G
+                R.add_node(g[0], pos=g[1]['pos'])
+                R.add_edge(r, g[0], length=node_dist(R, r, g[0]))
+            else:
+                # add the new point
+                R.add_node(g[0], pos=g[1]['pos'])
+            # remove the node from G
+            del G_nodes[index] 
+        
+        random_trees.append(R)
+    
+    for R in random_trees:
+        # compute actual (mcost, scost)
+        critical_nodes = []
+        for u in R.nodes():
+            if R.degree(u) == 1:
+                critical_nodes.append(u)
+        mactual, sactual = graph_costs(R, critical_nodes=critical_nodes)
+        actual = (mactual, sactual)
+        costs.append(actual)
+    
+    return costs
