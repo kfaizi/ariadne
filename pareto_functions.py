@@ -485,14 +485,13 @@ def random_tree(G):
     # dynamically pop random points from G
     for i in range(1000):
         G_nodes = []
-        for i in G_critical_nodes:
-            G_nodes.append(all_nodes[i-1])
+        for j in G_critical_nodes:
+            G_nodes.append(all_nodes[j-1])
         R = nx.Graph() # random tree
 
-        for j in range(len(G_nodes)):
+        while len(G_nodes) > 0:
             # randomly draw 1 node from G
-            size = len(G_nodes)
-            index = random.randrange(size)
+            index = random.randrange(len(G_nodes))
             g = G_nodes[index]
 
             if len(R.nodes) > 0:
@@ -506,19 +505,15 @@ def random_tree(G):
             else:
                 # add the new point
                 R.add_node(g[0], pos=g[1]['pos'])
-            # remove the node from G
+            # remove the node from candidate list and repeat
             del G_nodes[index] 
         
         random_trees.append(R)
     
     for R in random_trees:
         # compute actual (mcost, scost)
-        critical_nodes = []
-        for u in R.nodes():
-            if R.degree(u) == 1:
-                critical_nodes.append(u)
-        mactual, sactual = graph_costs(R, critical_nodes=critical_nodes)
+        mactual, sactual = graph_costs(R)
         actual = (mactual, sactual)
         costs.append(actual)
     
-    return costs
+    return random_trees, costs
