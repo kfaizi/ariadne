@@ -1,13 +1,17 @@
-"""GUI for segmenting root images from Arabidopsis seedlings grown on agar plates. 
+'''
+GUI for segmenting root images from Arabidopsis seedlings grown on agar plates. 
 
 Copyright 2020 Kian Faizi.
 
 TO-DO:
+zoom
+LR colors
 n-nary tree
 try:except for dialog errors?
 easier selection of nearby points
 add message when output created successfully?
-"""
+easy resizing UI
+'''
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
@@ -20,7 +24,7 @@ import copy
 
 
 class Application(tk.Frame):
-    """Panning from https://stackoverflow.com/questions/20645532/move-a-tkinter-canvas-with-mouse"""
+    '''Panning from https://stackoverflow.com/questions/20645532/move-a-tkinter-canvas-with-mouse'''
     def __init__(self, master):
         super().__init__(master)
         self.canvas = tk.Canvas(self, width=w_width, height=w_height, bg="gray")
@@ -55,7 +59,7 @@ class Application(tk.Frame):
 
 
 class Node(object):
-    """An (x,y,0) point along a root."""
+    '''An (x,y,0) point along a root.'''
 
     def __init__(self, coords, shape_val):
         self.coords = coords  # (x,y) tuple
@@ -71,6 +75,8 @@ class Node(object):
         self.index = 2  # if the node is a left child, 0; right, 1; mid, 2
         self.is_PR = True  # primary root
         self.LR_index = None  # if lateral root, denote by index
+        self.pedge = None # id of parent edge (edge incident on node)
+        self.pedge_color = "green"
 
     def add_child(self, obj):  # where obj is the node being added
         global tree
@@ -86,6 +92,7 @@ class Node(object):
             obj.mid.depth += 1
             # update depths for subtree with root = obj.mid
             tree.DFS(obj.mid)
+            draw_edge(self, obj)
         else:
             numkids = (3 - [self.left, self.mid, self.right].count(None))
 
@@ -124,7 +131,7 @@ class Node(object):
 
 
 class Tree(object):
-    """A hierarchical collection of nodes."""
+    '''A hierarchical collection of nodes.'''
 
     def __init__(self):
         self.nodes = []
@@ -157,26 +164,10 @@ class Tree(object):
         self.nodes.append(obj)
 
         if inserting:
-            # silly method, improve this later. for now:
-            # 1) delete existing tree
-            for line in self.edges:
-                w.delete(line)
-            self.edges = []
-
-            # 2) then redraw it based on new nodes post-insertion
-            for n in self.nodes:
-                if n.left is not None:
-                    x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    self.edges.append(x)
-                if n.right is not None:
-                    x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    self.edges.append(x)
-                if n.mid is not None:
-                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    self.edges.append(x)     
+            redraw()
 
     def DFS(self, root):
-        """For insertion mode: walk the tree depth-first and increment subtree depths by +1."""
+        '''For insertion mode: walk the tree depth-first and increment subtree depths by +1.'''
         root.is_visited = True
         for child in (root.left, root.mid, root.right):
             if child is not None and child.is_visited is False:
@@ -190,7 +181,7 @@ class Tree(object):
 
 
     def index_LRs(self, root):
-        """Walk the tree breadth-first and assign indices to lateral roots."""
+        '''Walk the tree breadth-first and assign indices to lateral roots.'''
         q = Queue()
         q.put(root)
         LR = 0
@@ -213,7 +204,7 @@ class Tree(object):
                 q.put(curr.mid)
 
     def make_file(self, input_path):
-        """Output tree data to file."""
+        '''Output tree data to file.'''
         self.index_LRs(self.top)
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
@@ -273,6 +264,7 @@ def undo(event):
             w.delete(n.shape_val)
         for e in tree.edges:
             w.delete(e)
+        tree.edges = []
 
         tree = previous
         for n in tree.nodes:
@@ -283,16 +275,7 @@ def undo(event):
             else:
                 n.shape_val = w.create_oval(x,y,x+2,y+2,width=0,fill="red")
 
-            for n in tree.nodes:
-                if n.left is not None:
-                    x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    tree.edges.append(x)
-                if n.mid is not None:
-                    x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    tree.edges.append(x)
-                if n.right is not None:
-                    x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-                    tree.edges.append(x)
+        redraw()
 
     except IndexError as e: # end of saved history
         print(e)
@@ -317,9 +300,28 @@ def keybind_make_file(event):
     global tree
     tree.make_file(imgpath)
 
+def redraw():
+    global tree, tree_flag
+    '''Redraw the tree's edges to update its appearance.'''
+    # 1) delete existing tree
+    for line in tree.edges:
+        w.delete(line)
+    tree.edges = []
 
-def delete(event):  # probably remove from final iteration
-    """Remove selected nodes, including parent references."""
+    # 2) then redraw it based on new nodes post-deletion
+    for n in tree.nodes:
+        if n.left is not None:
+            x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill=n.left.pedge_color, state=f"{tree_flag}")
+            tree.edges.append(x)
+        if n.mid is not None:
+            x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill=n.mid.pedge_color, state=f"{tree_flag}")
+            tree.edges.append(x)
+        if n.right is not None:
+            x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill=n.right.pedge_color, state=f"{tree_flag}")
+            tree.edges.append(x)
+
+def delete_button(event):
+    '''Remove selected nodes, including parent references.'''
     global tree, tree_flag
     newtree = []
 
@@ -346,30 +348,15 @@ def delete(event):  # probably remove from final iteration
             newtree.append(n)
 
     tree.nodes = newtree
+    redraw()
 
-    # refresh:
-    # silly method, fix this later. for now:
-    # 1) delete existing tree
+# def delete(node, tree):
+#     '''General-purpose helper function for deleting nodes and their references.
+#     Doesn't change history.
+#     '''
 
-    for line in tree.edges:
-        w.delete(line)
-    tree.edges = []
-
-    # 2) then redraw it based on new nodes post-deletion
-    for n in tree.nodes:
-        if n.left is not None:
-            x = w.create_line(n.left.coords[0], n.left.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-            tree.edges.append(x)
-        if n.mid is not None:
-            x = w.create_line(n.mid.coords[0], n.mid.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-            tree.edges.append(x)
-        if n.right is not None:
-            x = w.create_line(n.right.coords[0], n.right.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-            tree.edges.append(x)
-
-
-def select_all(event):  # probably remove from final iteration
-    """Select/deselect all nodes."""
+def select_all(event):
+    '''Select/deselect all nodes.'''
     global tree, selected_all
 
     if not selected_all:
@@ -383,7 +370,7 @@ def select_all(event):  # probably remove from final iteration
 
 
 def select_parent(event):
-    """Select the parent of the last placed point."""
+    '''Select the parent of the last placed point.'''
     global tree
 
     ### REFACTOR ###
@@ -409,7 +396,7 @@ def select_parent(event):
 
 
 def show_info(event):
-    """Print information for the node clicked."""
+    '''Print information for the node clicked.'''
     x = w.canvasx(event.x)
     y = w.canvasy(event.y)
     for n in tree.nodes:  # check click proximity to existing points
@@ -421,7 +408,7 @@ def show_info(event):
 
 
 def override(event):
-    """Override proximity limit on node placement."""
+    '''Override proximity limit on node placement.'''
     global prox_override, override_text
 
     if prox_override:
@@ -434,7 +421,7 @@ def override(event):
     # make this update intelligently
 
 def insert(event):
-    """Insert a new 'mid' node between 2 existing ones."""
+    '''Insert a new 'mid' node between 2 existing ones.'''
     # select the parent for your new node, then call this function.
     # then place the new node.
 
@@ -461,7 +448,7 @@ def insert(event):
 
 
 def place_node(event):
-    """Place or select points on click."""
+    '''Place or select points on click.'''
     global prox_override, tree, tree_flag
 
     x = w.canvasx(event.x)
@@ -509,15 +496,14 @@ def place_node(event):
 
     for n in tree.nodes:  # draw new line, and deselect all other points
         if n.is_selected:  # then n is parent
-            line = w.create_line(point.coords[0], point.coords[1], n.coords[0], n.coords[1], fill="green", state=f"{tree_flag}")
-            tree.edges.append(line)
+            draw_edge(n, point)
         n.deselect()
 
     point.select()
 
 
 def next_day(event):
-    """Show the next frame in the GIF."""
+    '''Show the next frame in the GIF.'''
     global iterframes, frame_index, tree, frame_id, newpic, day_indicator
 
     try:
@@ -539,7 +525,7 @@ def next_day(event):
 
 
 def previous_day(event):
-    """Show the previous frame in the GIF."""
+    '''Show the previous frame in the GIF.'''
     global iterframes, frame_index, tree, frame_id, newpic, day_indicator
 
     try:
@@ -561,14 +547,61 @@ def previous_day(event):
 
 
 def motion_track(event):
-    """Get the mouse's current canvas coordinates; also, update the status bar."""
+    '''Get the mouse's current canvas coordinates; also, update the status bar.'''
     canvas_coords = (int(w.canvasx(event.x)), int(w.canvasy(event.y)))
 
     statusbar["text"] = f"{day_indicator}, {canvas_coords}, {override_text}, {inserting_text}"
 
-    # good, but this doesn't update without a movement event -- need to trigger on keybind too
+    # good, but this doesn't update without a movement event -- need to trigger on keypress too
     # call function w/i each keybound function?
 
+def get_color():
+    '''Fetch a new color, e.g. for lateral roots.'''
+    global colors
+
+    # later, generate accessible/colorblind-safe/nice palettes programatically? maybe via HSLuv?
+    palette = [ 
+        # seaborn colorblind
+        '#0173B2',
+        '#DE8F05',
+        '#029E73',
+        '#D55E00',
+        '#CC78BC',
+        '#CA9161',
+        '#FBAFE4',
+        '#949494',
+        '#ECE133',
+        '#56B4E9',
+    ]
+        # 'green', # PR
+        # 'red', # selected node
+        # 'white', # unselected node
+    
+    pos = (colors - len(palette)) % len(palette)
+    colors += 1
+    return palette[pos] # next color
+    
+def draw_edge(parent, child):
+    '''Draw an edge between two nodes, and add it to the tree.'''
+    global tree
+
+    if (parent.is_PR) and (parent.mid == child): # child is PR too
+        color = 'green'
+    elif parent.mid != child: # new LR
+        color = get_color()
+    else: # old LR, so use same color as preceding edge.
+        color = parent.pedge_color
+
+    edge = w.create_line(parent.coords[0], parent.coords[1], child.coords[0], child.coords[1], fill=color, state=f"{tree_flag}")
+    tree.edges.append(edge)
+    child.pedge = edge
+    child.pedge_color = color
+
+
+
+
+
+colors = 0 # excluding PR (green), current node (red), and other nodes (white)
 selected_all = False
 prox_override = False
 override_text = ""  # prox override indicator
@@ -582,7 +615,7 @@ tree = Tree()  # instantiate first tree
 
 history = deque(maxlen = 6)
 
-
+get_color()
 
 if __name__ == "__main__":
     w_width = 6608
@@ -614,7 +647,7 @@ if __name__ == "__main__":
     w.bind("<Button 2>", show_info)
     w.bind("e", next_day)
     w.bind("q", previous_day)
-    w.bind("d", delete)
+    w.bind("d", delete_button)
     w.bind("a", select_all)
     w.bind("g", keybind_make_file)
     w.bind("t", show_tree)
@@ -623,6 +656,5 @@ if __name__ == "__main__":
     w.bind("<Control-z>", undo)
 
     w.bind("<Motion>", motion_track)
-
 
     base.mainloop()
