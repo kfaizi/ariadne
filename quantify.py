@@ -63,18 +63,47 @@ def make_graph(target):
                 group_num += 1
     #return "Done!" (used for csv creation)
     return G
-    
-def show_skel(target):
-    '''Plot a nx graph/skel from a .txt file'''
-    G = make_graph(target)
-    layout = {} # dict of nodes:positions
-    for i in G.nodes.data():
-        node = i[0]
-        pos = i[1]['pos']
-        layout[node] = pos 
-    print(layout)
-    nx.draw_networkx(G, pos=layout)
-    plt.show()
+
+
+def make_graph_alt(target):
+    '''Construct a broken graph (without problematic edges).'''
+    G = nx.Graph()
+    with open(target, "r") as f: # parse input file
+        q = Queue()
+        node_num = 1 # label nodes with unique identifiers
+        for line in f:
+            if line.startswith("##"): # Level heading
+                group_num = 0 # count nodes per level, and reset on level change, to match hierarchy info from tuples
+                level = int(line.rstrip().split(": ")[1])
+                continue
+            else:
+                info = line.rstrip().split("; ")
+                if len(info) > 1: # node has degree > 1
+                    coords = tuple(int(float(i)) for i in info[0].split())[0:2] # change output coords from floats to ints
+                    G.add_node(node_num, pos = coords)
+                    if not q.empty():
+                        parent = q.get()
+                        # print(parent, level, group_num, info)
+                        if level == parent[1][0] and group_num == parent[1][1]: # check that the expected and actual positions of the child match
+                            G.add_edge(node_num, parent[0], length = distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
+                        else:
+                            print(f"Edge assignment failed: {parent}; {level}; {group_num}; {info}")
+                    # place all descendants of the current node in the queue for processing in future rounds
+                    children = info[1].split()
+                    for child in children:
+                        q.put((node_num, list(map(int, child.strip('[]').split(','))))) # converts each child object from list of strings to list of ints
+                else: # terminal node (degree == 1)
+                    coords = tuple(int(float(i)) for i in info[0].rstrip(";").split())[0:2]
+                    G.add_node(node_num, pos = coords)
+                    children = None
+                    parent = q.get()
+                    if level == parent[1][0] and group_num == parent[1][1]:
+                        G.add_edge(node_num, parent[0], length = distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
+                    else:
+                        print("Edge assignment failed: terminal node.")
+                node_num += 1
+                group_num += 1
+    return G
 
 def save_plot(path, name, title):
     '''Plot a Pareto front and save to .jpg'''
@@ -103,21 +132,33 @@ def save_plot(path, name, title):
 
 
 # path, name, title
-targets = [
-    ['/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt', '9-B-13-rand.jpg', '+Fe_B_Day13'],
-    ['/home/kian/Lab/9_20200205-214859_003_plantE_day13.txt', '9-E-13-rand.jpg', '+Fe_E_Day13'],
-    ['/home/kian/Lab/13_20200205-214859_005_plantB_day12.txt', '13-B-12-rand.jpg', '-Fe_B_Day12'],
-    ['/home/kian/Lab/13_20200205-214859_005_plantE_day12.txt', '13-E-12-rand.jpg', '-Fe_E_Day12'],
-    ['/home/kian/Lab/25_20200205-215844_026_plantB_day14.txt', '25-B-14-rand.jpg', '+N_B_Day14'],
-    ['/home/kian/Lab/25_20200205-215844_026_plantD_day14.txt', '25-D-14-rand.jpg', '+N_D_Day14'],
-    ['/home/kian/Lab/29_20200205-215844_028_plantA_day14.txt', '29-A-14-rand.jpg', '-N_A_Day14'],
-    ['/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14-rand.jpg', '-N_B_Day14']
-]
+# targets = [
+#     ['/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt', '9-B-13-rand.jpg', '+Fe_B_Day13'],
+#     ['/home/kian/Lab/9_20200205-214859_003_plantE_day13.txt', '9-E-13-rand.jpg', '+Fe_E_Day13'],
+#     ['/home/kian/Lab/13_20200205-214859_005_plantB_day12.txt', '13-B-12-rand.jpg', '-Fe_B_Day12'],
+#     ['/home/kian/Lab/13_20200205-214859_005_plantE_day12.txt', '13-E-12-rand.jpg', '-Fe_E_Day12'],
+#     ['/home/kian/Lab/25_20200205-215844_026_plantB_day14.txt', '25-B-14-rand.jpg', '+N_B_Day14'],
+#     ['/home/kian/Lab/25_20200205-215844_026_plantD_day14.txt', '25-D-14-rand.jpg', '+N_D_Day14'],
+#     ['/home/kian/Lab/29_20200205-215844_028_plantA_day14.txt', '29-A-14-rand.jpg', '-N_A_Day14'],
+#     ['/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14-rand.jpg', '-N_B_Day14']
+# ]
 
-for i in targets:
-    save_plot(i[0], i[1], i[2])
+# for i in targets:
+#     save_plot(i[0], i[1], i[2])
 
 #save_plot('/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14.jpg', '-N_B_Day14')
 
 # G = make_graph('/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt')
 # random_tree_crit(G)
+
+def show_skel(target):
+    '''Plot a nx graph/skel from a .txt file'''
+    G = make_graph(target)
+    layout = {} # dict of nodes:positions
+    for i in G.nodes.data():
+        node = i[0]
+        pos = i[1]['pos']
+        layout[node] = pos 
+    print(layout)
+    nx.draw_networkx(G, pos=layout)
+    plt.show()
