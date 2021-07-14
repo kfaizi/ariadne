@@ -60,6 +60,8 @@ class Node(object):
 
     def __init__(self, coords, shape_val):
         self.coords = coords  # (x,y) tuple
+        self.x = None
+        self.y = None
         self.relcoords = None  # (x,y) relative to root node
         self.shape_val = shape_val  # canvas object ID
         self.is_selected = False
@@ -141,8 +143,10 @@ class Tree(object):
     def add_node(self, obj):
         global tree_flag
 
-        hologram = copy.deepcopy(self)
-        history.append(hologram) # save tree each time a node is added
+        # for some reason, this breaks upon opening a broken graph. why?
+        # omit for now...
+        # hologram = copy.deepcopy(self)
+        # history.append(hologram) # save tree each time a node is added
 
         if self.nodes:
             for n in self.nodes:
@@ -553,7 +557,6 @@ def draw_edge(parent, child):
     child.pedge_color = color
 
 
-
 colors = 0 # excluding PR (green), current node (red), and other nodes (white)
 selected_all = False
 prox_override = False
@@ -585,14 +588,29 @@ if __name__ == "__main__":
     txtpath = askopenfilename(parent=base, initialdir="./", title="Select a file")
     
     G = make_graph_alt(txtpath)
+    origin = [1000,500]
     layout = {} # dict of nodes:positions
+    #shapes = {} # dict of nodes:shape_vals
     for i in G.nodes.data():
+        # populate layout
         node = i[0]
-        pos = i[1]['pos']
+        raw_pos = i[1]['pos']
+        pos = tuple(map(lambda i,j: i+j, origin, raw_pos))
         layout[node] = pos
-    
-    nx.draw_networkx(G, pos=layout)
-    plt.show()
+        # place node
+        event = Node((pos[0],pos[1]), 0)
+        event.x, event.y = pos[0], pos[1]
+        place_node(event)
+        #shapes[node] = tree.nodes[node-1].shape_val
+
+        
+    # build edges from file (assess the damage lol)
+    for i in list(G.edges):
+        parent = i[0]
+        child = i[1]
+        print(parent, child)
+        edge = w.create_line(layout[parent][0], layout[parent][1], layout[child][0], layout[child][1], fill='green')
+
 
     app.pack()
     w.focus_force()  # fix cursor issue the first time
