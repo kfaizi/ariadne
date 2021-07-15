@@ -15,9 +15,46 @@
 
 📊 It also includes some (very cool) algorithms for analyzing those skeletons, which were mostly developed by other (very cool) people<sup id="a1">[1](#f1)</sup><sup>,</sup><sup id="a2">[2](#f2)</sup>. The focus is on measuring cost-performance trade-offs and Pareto optimality in RSA networks.
 
-⚠️ This is very much a work-in-progress! These are custom scripts written for a small, ongoing research project — so I can't offer any support or documentation yet. 
+⚠️ This is very much a work-in-progress! These are custom scripts written for a small, ongoing research project — so all code is provided as-is.
 
-🔨 That said, if you're interested in tinkering with the code, enjoy! And please reach out with comments, ideas, suggestions, or feedback. 
+🔨 That said, if you're interested in tinkering with the code, enjoy! PRs are always welcome. And please reach out with any comments, ideas, suggestions, or feedback.
+
+## Installation
+#### Using `conda`
+After cloning the repo, open a command line and navigate to it. Now type
+
+```
+conda env create --file environment.yaml
+```
+
+A new Python virtual environment, with all the necessary dependencies installed, is now ready to use. Activate it with
+
+```
+conda activate rootmarker
+```
+
+## Use
+To do segmentation, type
+
+```
+python rootmarker.py
+```
+
+Select an input image file using the resulting dialog; it will open in a new window where you can start your analysis.
+
+#### Keybinds
+* `Left-click`: place/select node. To pan, hold `Alt` or `Ctrl` and drag
+* `t`: toggle skeleton visibility (default: off)
+* `e`: next frame (GIFs only)
+* `q`: previous frame (GIFs only)
+* `r`: toggle proximity override. By default, clicking on or near an existing node will select it. When this override is on, a new node will be placed instead. Useful for finer control in crowded areas (default: off)
+* `i`: toggle insertion mode. By default, new nodes extend a branch (i.e., have a degree of 1). Alternatively, use insertion mode to intercalate a new node between 2 existing ones. When toggled, proximity override is automatically enabled as well. Useful for handling emering lateral roots in regions you have already segmented (default: off)
+* `g`: Save output file
+* `a`: Select/deselect all nodes
+* `d`: Delete currently selected node(s)
+* `Ctrl-Z`: Undo last action
+
+
 
 ## References
 <b id="f1">1.</b> Chandrasekhar, Arjun, and Navlakha, Saket. "Neural arbors are Pareto optimal." _Proceedings of the Royal Society B_ 286.1902 (2019): 20182727. https://doi.org/10.1098/rspb.2018.2727 [↩](#a1)
@@ -25,4 +62,4 @@
 <b id="f2">2.</b> Conn, Adam, et al. "High-resolution laser scanning reveals plant architectures that reflect universal network design principles." _Cell Systems_ 5.1 (2017): 53-62. https://doi.org/10.1016/j.cels.2017.06.017 [↩](#a2)
 
 ### Acknowledgments
-Matt (for guidance, ideas, and support); Illia (for technical advice); Tosh (for help debugging, and friendship)
+Matt (for guidance, ideas, and support); Illia (for technical advice); Tosh (for late-night debugging help)
