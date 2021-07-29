@@ -39,6 +39,8 @@ class Application(tk.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
+        self.canvas.curr_coords = (0,0)
+
         # enable scrolling with mouse (linux)
         self.canvas.bind("<Alt-ButtonPress-1>", self.scroll_start)
         self.canvas.bind("<Alt-B1-Motion>", self.scroll_move)
@@ -138,7 +140,7 @@ class Tree(object):
         self.edges = []
         self.day = 1  # day (frame) of timeseries (GIF)
         self.plant = "TEST"  # ID of plant on plate (A-E, from left to right)
-        self.is_shown = False
+        self.is_shown = True
         self.top = None  # node object at top of tree (root node)
 
     def add_node(self, obj):
@@ -425,31 +427,36 @@ def insert(event):
     # select the parent for your new node, then call this function.
     # then place the new node.
 
-    global inserting, inserting_text
+    global inserting, inserting_text, prox_override
 
     if inserting:
         inserting = False
         inserting_text = ""
+        if prox_override:
+            override(event)
     else:
         selected_count = 0
         for n in tree.nodes:
             if n.is_selected:
                 if (3-[n.left, n.mid, n.right].count(None)) == 0:  # no children
-                    print("Error: can't insert at terminal point")
+                    print("Warning: can't insert at terminal point")
                     return
                 else:
                     selected_count += 1
         if selected_count > 1:
-            print("Error: can't insert with more than one point selected")
+            print("Warning: can't insert with more than one point selected")
             return
 
         inserting = True
         inserting_text = "insertion_mode=ON"
+        
+        if not prox_override:
+            override(event)
 
 
 def place_node(event):
     '''Place or select points on click.'''
-    global prox_override, tree, tree_flag
+    global prox_override, tree, tree_flag, inserting ## why wasn't this here?
 
     x = w.canvasx(event.x)
     y = w.canvasy(event.y)
@@ -460,21 +467,6 @@ def place_node(event):
     elif selected_all is True and len(tree.nodes) > 0:
         print("Can't assign child to multiple nodes at once! Select just one and try again.")
         select_all(event)
-        return
-
-    if inserting:  # choose the new point to be inserted
-        idx = w.create_oval(x, y, x+2, y+2, width=0, fill="white")
-        point = Node((x, y), idx)
-
-        # for insertion mode only, we draw lines in add_child()
-        tree.add_node(point)
-
-        for n in tree.nodes:  # deselect all other points
-            n.deselect()
-        point.select()
-
-        insert(event)  # turn off insertion mode after placing new point
-
         return
 
     if not prox_override:
@@ -493,14 +485,21 @@ def place_node(event):
     point = Node((x, y), idx)
     tree.add_node(point)
 
-
-    for n in tree.nodes:  # draw new line, and deselect all other points
-        if n.is_selected:  # then n is parent
-            draw_edge(n, point)
-        n.deselect()
-
+    if inserting:
+        for n in tree.nodes:  # deselect all other points
+            n.deselect()
+        insert(event)  # turn off insertion mode after placing new point
+    else:
+        for n in tree.nodes:
+            if n.is_selected:
+                draw_edge(n, point)
+            n.deselect()
+    
     point.select()
 
+    #  turn off override mode after placing new point
+    if prox_override:
+        override(event)
 
 def next_day(event):
     '''Show the next frame in the GIF.'''
@@ -548,30 +547,26 @@ def previous_day(event):
 
 def motion_track(event):
     '''Get the mouse's current canvas coordinates; also, update the status bar.'''
-    canvas_coords = (int(w.canvasx(event.x)), int(w.canvasy(event.y)))
 
-    statusbar["text"] = f"{day_indicator}, {canvas_coords}, {override_text}, {inserting_text}"
-
-    # good, but this doesn't update without a movement event -- need to trigger on keypress too
-    # call function w/i each keybound function?
+    if str(event.type) == "Motion":
+        w.curr_coords = (int(w.canvasx(event.x)), int(w.canvasy(event.y)))
+    statusbar["text"] = f"{day_indicator}, {w.curr_coords}, {override_text}, {inserting_text}"
 
 def get_color():
     '''Fetch a new color, e.g. for lateral roots.'''
     global colors
 
-    # later, generate accessible/colorblind-safe/nice palettes programatically? maybe via HSLuv?
     palette = [ 
         # seaborn colorblind
-        '#0173B2',
-        '#DE8F05',
-        '#029E73',
-        '#D55E00',
-        '#CC78BC',
-        '#CA9161',
-        '#FBAFE4',
-        '#949494',
-        '#ECE133',
-        '#56B4E9',
+        '#0173B2', # dark blue
+        '#DE8F05', # orange
+        '#029E73', # green
+        '#D55E00', # red orange
+        '#CC78BC', # violet
+        '#CA9161', # tan
+        '#FBAFE4', # pink
+        '#ECE133', # yellow
+        '#56B4E9', # light blue
     ]
         # 'green', # PR
         # 'red', # selected node
@@ -597,10 +592,6 @@ def draw_edge(parent, child):
     child.pedge = edge
     child.pedge_color = color
 
-
-
-
-
 colors = 0 # excluding PR (green), current node (red), and other nodes (white)
 selected_all = False
 prox_override = False
@@ -608,7 +599,7 @@ override_text = ""  # prox override indicator
 inserting = False
 inserting_text = ""  # insertion mode indicator
 day_indicator = ""  # gif frame
-tree_flag = "hidden"
+tree_flag = "normal"
 
 base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
 tree = Tree()  # instantiate first tree
@@ -620,8 +611,6 @@ get_color()
 if __name__ == "__main__":
     w_width = 6608
     w_height = 6614
-    # w_width = 1000
-    # w_height = 1000
     app = Application(base)
     w = app.canvas
 
@@ -656,5 +645,6 @@ if __name__ == "__main__":
     w.bind("<Control-z>", undo)
 
     w.bind("<Motion>", motion_track)
+    w.bind("<KeyRelease>", motion_track)
 
     base.mainloop()
