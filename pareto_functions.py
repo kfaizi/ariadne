@@ -18,7 +18,7 @@ def graph_costs(G, critical_nodes=None):
 
     Wiring cost is the total length of the edges in the network
 
-    Conduction delay is the sum of the distances from each point to  the root.
+    Conduction delay is the sum of the distances from each point to the root.
 
     By default, computes conduction delay for all nodes. If you specify a set of critical
     nodes, then only those nodes are used for computing conduction delay
@@ -516,4 +516,4 @@ def random_tree(G):
         actual = (mactual, sactual)
         costs.append(actual)
     
-    return random_trees, costs
+    return costs
