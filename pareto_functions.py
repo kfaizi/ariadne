@@ -7,6 +7,7 @@ from sys import argv
 from scipy.spatial.distance import euclidean
 import argparse
 import random
+import copy
 
 STEINER_MIDPOINTS = 10
 
@@ -468,52 +469,50 @@ def pareto_front(G):
 def random_tree(G):
     '''
     Given a graph G, compute 1000 random spanning trees as in Conn et al. 2017.
-    Only consider the critical nodes of G.
+    Only consider the critical nodes (and root node) of G.
     '''
     random.seed(a=None)
-    random_trees = []
+    random_trees = [] # list of 1000 random trees
     costs = []
+
+    # full list of nodes of G, with info
+    all_nodes = list(G.nodes.data())
 
     # get critical nodes of G
     G_critical_nodes = []
     for i in G.nodes():
-        if G.degree(i) == 1:
-            G_critical_nodes.append(i)
+        if i == 1 or G.degree(i) == 1: # assumes root node is always first
+            G_critical_nodes.append(all_nodes[i-1])
 
-    all_nodes = list(G.nodes.data())
+    for i in range(1000): # 1000 random trees
+        # copy list of critical nodes for manipulation
+        G_crits = copy.deepcopy(G_critical_nodes)
+        # instantiate random tree
+        R = nx.Graph()
 
-    # dynamically pop random points from G
-    for i in range(1000):
-        G_nodes = []
-        for j in G_critical_nodes:
-            G_nodes.append(all_nodes[j-1])
-        R = nx.Graph() # random tree
+        while len(G_crits) > 0:
+            # randomly draw 1 node from G's critical nodes
+            index = random.randrange(len(G_crits))
+            g = G_crits[index]
 
-        while len(G_nodes) > 0:
-            # randomly draw 1 node from G
-            index = random.randrange(len(G_nodes))
-            g = G_nodes[index]
-
-            if len(R.nodes) > 0:
+            if len(R.nodes) > 0: # if R is not empty
                 # add the new point AND a random edge
-                # get a random node from R
-                r_index = random.randrange(len(R.nodes))
-                r = list(R.nodes)[r_index] 
-                # add the node from G
+                r_index = random.randrange(len(R.nodes)) # get a random node from R
+                r = list(R.nodes)[r_index]
                 R.add_node(g[0], pos=g[1]['pos'])
                 R.add_edge(r, g[0], length=node_dist(R, r, g[0]))
-            else:
+            else: # if R is empty
                 # add the new point
                 R.add_node(g[0], pos=g[1]['pos'])
-            # remove the node from candidate list and repeat
-            del G_nodes[index] 
+            # remove added node from candidate list and repeat
+            del G_crits[index] 
         
         random_trees.append(R)
+
     
     for R in random_trees:
-        # compute actual (mcost, scost)
+        # compute costs for each R, to compare with G
         mactual, sactual = graph_costs(R)
-        actual = (mactual, sactual)
-        costs.append(actual)
+        costs.append((mactual, sactual))
     
     return costs
