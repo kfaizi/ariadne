@@ -5,11 +5,9 @@ Copyright 2020 Kian Faizi.
 
 TO-DO:
 zoom
-LR colors
 n-nary tree
 try:except for dialog errors?
 easier selection of nearby points
-add message when output created successfully?
 easy resizing UI
 '''
 
@@ -139,7 +137,7 @@ class Tree(object):
         self.nodes = []
         self.edges = []
         self.day = 1  # day (frame) of timeseries (GIF)
-        self.plant = "TEST"  # ID of plant on plate (A-E, from left to right)
+        self.plant = None  # ID of plant on plate (A-E, from left to right)
         self.is_shown = True
         self.top = None  # node object at top of tree (root node)
 
@@ -205,8 +203,46 @@ class Tree(object):
                     curr.mid.LR_index = curr.LR_index
                 q.put(curr.mid)
 
+
+    def popup(self):
+        '''Popup menu for plant ID assignment.'''
+        top = tk.Toplevel()
+        label = tk.Label(top, text="Please select a plant ID:")
+        label.pack()
+        
+        v = tk.StringVar() # holds plant ID
+
+        a = tk.Radiobutton(top, text='A', variable=v, value='A', bg='white', fg='black')
+        a.pack()
+        a.select() # default option for nicer aesthetics
+
+        tk.Radiobutton(top, text='B', variable=v, value='B', bg='white', fg='black').pack()
+
+        tk.Radiobutton(top, text='C', variable=v, value='C', bg='white', fg='black').pack()
+
+        tk.Radiobutton(top, text='D', variable=v, value='D', bg='white', fg='black').pack()
+
+        tk.Radiobutton(top, text='E', variable=v, value='E', bg='white', fg='black').pack()
+        
+        def updater():
+            top.destroy()
+            self.plant = v.get()
+
+        ok = tk.Button(top, text='OK', command=updater)
+        cancel = tk.Button(top, text='Cancel', command=top.destroy)
+        ok.pack()
+        cancel.pack()
+
+        base.wait_window(top) # wait for a button to be pressed
+
     def make_file(self, input_path):
         '''Output tree data to file.'''
+        if self.plant is None: # get plant ID when called for the first time
+            self.popup()
+        
+        if self.plant is None: # user didn't update ID (pressed cancel)
+            return
+
         self.index_LRs(self.top)
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
@@ -220,7 +256,7 @@ class Tree(object):
         # need this for first unit test; fix
         #source = input_path.stem
 
-        output_name = f"{source}_plant{self.plant}_day{self.day}.txt" # hardcoded ID :(
+        output_name = f"{source}_plant{self.plant}_day{self.day}.txt"
         repo_path = Path("./").resolve()
         output_path = repo_path.parent / output_name
 
@@ -255,6 +291,9 @@ class Tree(object):
                     kidcount += 1
 
                 h.write("\n")
+
+
+
 
 
 def undo(event):
@@ -601,7 +640,7 @@ inserting_text = ""  # insertion mode indicator
 day_indicator = ""  # gif frame
 tree_flag = "normal"
 
-base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
+base = tk.Tk() # main window
 tree = Tree()  # instantiate first tree
 
 history = deque(maxlen = 6)
