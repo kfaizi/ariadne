@@ -1,3 +1,15 @@
+'''
+ARIADNE
+
+A GUI for segmenting root images from Arabidopsis seedlings grown on agar plates. 
+
+Copyright 2020-2021 Kian Faizi.
+
+TODO:
+try:except for dialog errors?
+easier selection of nearby points
+'''
+
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk, ImageSequence
