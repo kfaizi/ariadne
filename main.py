@@ -22,7 +22,7 @@ from queue import Queue
 from collections import deque
 import copy
 
-# TEST HISTORY DEQUE ACCURACY
+# TODO: TEST HISTORY DEQUE ACCURACY
 
 
 class StartupUI:
@@ -77,19 +77,16 @@ class TracerUI(tk.Frame):
         self.menu = tk.Frame(self.frame, width=175, bg='green')
         self.menu.pack(side='top', fill='both', expand=True)
 
-        self.test_button = tk.Button(self.menu, text='Just a test')
+        self.test_button = tk.Button(self.menu, text='Import image file', command=self.import_image)
         self.test_button.pack()
 
         # filename titlebar
         self.title_frame = tk.Frame(self.frame)
-        self.title_label = tk.Label(self.title_frame, text='Now tracing file X')
+        self.title_label = tk.Label(self.title_frame, text=f'Tracing')
         self.title_label.pack()
 
         # image canvas
         self.canvas = tk.Canvas(self.frame, width=600, height=700, bg='gray')
-
-        # current tree
-        self.tree = Tree() # instantiate first tree ## think about clearing/overwriting
 
         # useful flags
         self.selected_all = False # tracks whether all nodes are currently selected
@@ -120,7 +117,7 @@ class TracerUI(tk.Frame):
 
         # bottom statusbar
         self.statusbar_frame = tk.Frame(self.frame)
-        self.statusbar = tk.Label(self.statusbar_frame, text='Statusbar here', bd=1, relief='sunken', anchor='w')
+        self.statusbar = tk.Label(self.statusbar_frame, text='Statusbar', bd=1, relief='sunken', anchor='w')
         self.statusbar.pack(fill='both', expand=True)
 
         # statusbar elements
@@ -145,10 +142,8 @@ class TracerUI(tk.Frame):
         self.canvas.bind('r', self.override)
         self.canvas.bind('i', self.insert)
         self.canvas.bind('a', self.select_all)
-        self.canvas.bind('g', self.tree.make_file(self.path)) ## check this works
         self.canvas.bind('d', self.delete)
         self.canvas.bind('t', self.show_tree)
-
 
         # place widgets using grid
         self.menu.grid(row=0, column=0, rowspan=4, sticky='news')
@@ -161,7 +156,6 @@ class TracerUI(tk.Frame):
         self.frame.grid_rowconfigure(1, weight=1)
         self.frame.grid_columnconfigure(1, weight=1)
 
-        self.import_image()
 
     def scroll_start(self, event):
         '''Mouse panning start.'''
@@ -178,12 +172,14 @@ class TracerUI(tk.Frame):
             # convert mouse position to canvas position
             self.canvas.curr_coords = (int(self.canvas.canvasx(event.x)), int(self.canvas.canvasy(event.y)))
         
-        # statusbar contents (finish adding later)
+        # update statusbar contents
         self.statusbar.config(text=f'{self.canvas.curr_coords}, {self.day_indicator}, {self.override_indicator}, {self.inserting_indicator}')
 
     def import_image(self):
         '''Query user for an input file and load it onto the canvas.'''
+        ## think about what happens if this is called multiple times in a session!
         self.path = askopenfilename(parent=self.base, initialdir='./', title='Select an image file:')
+        self.title_label.config(text=f'Tracing {self.path}')
         self.file = Image.open(self.path)
         self.img = ImageTk.PhotoImage(self.file)
 
@@ -191,6 +187,10 @@ class TracerUI(tk.Frame):
         self.iterframes = ImageSequence.Iterator(self.file)
         self.frame_index = 0
         self.frame_id = self.canvas.create_image(0,0,image=self.img, anchor='nw')
+
+        # current tree
+        self.tree = Tree(self.path) # instantiate first tree ## think about clearing/overwriting
+        self.canvas.bind('g', self.tree.make_file) ## check this works
 
     def change_frame(self, next_index):
         '''Move frames in the GIF.'''
@@ -239,6 +239,7 @@ class TracerUI(tk.Frame):
                         for m in self.tree.nodes:
                             m.deselect()
                         n.select()
+                    self.color_nodes()
                     return
 
         # place a new point and select it
@@ -247,7 +248,9 @@ class TracerUI(tk.Frame):
 
         hologram, draw = self.tree.add_node(point, self.inserting)
         self.history.append(hologram) # save tree each time a node is to be added
-        self.draw_edge(draw[0], draw[1])
+
+        if draw is not None:
+            self.draw_edge(draw[0], draw[1])
 
         if self.inserting:
             self.redraw() # update edges following add_node() above
@@ -261,6 +264,7 @@ class TracerUI(tk.Frame):
                 n.deselect()
    
         point.select()
+        self.color_nodes()
 
         # turn off override mode after placing new point
         if self.prox_override:
@@ -354,6 +358,7 @@ class TracerUI(tk.Frame):
             for n in self.tree.nodes:
                 n.deselect()
             self.selected_all = False
+        self.color_nodes()
     
     def undo(self, event):
         '''Undo the last graph-altering action.'''
@@ -416,9 +421,9 @@ class TracerUI(tk.Frame):
 
         for n in self.tree.nodes:
             # first delete references to selected points in their parents
-            for i in range(len(n.children)):
-                if n.children[i].is_selected:
-                    del n.children[i]
+            for m in n.children:
+                if m.is_selected:
+                    n.children.remove(m)
 
             # then remove the points themselves
             if n.is_selected:
@@ -428,6 +433,15 @@ class TracerUI(tk.Frame):
             
         self.tree.nodes = new_tree
         self.redraw()
+        self.color_nodes()
+
+    def color_nodes(self):
+        '''Refresh node colors to reflect whether they are selected/deselected.'''
+        for n in self.tree.nodes:
+            if n.is_selected:
+                self.canvas.itemconfig(n.shape_val, fill="red", outline="red", width=2)
+            else:
+                self.canvas.itemconfig(n.shape_val, fill="white", outline="white", width=1)
 
 class Node:
     '''An (x,y,0) point along a root.'''
@@ -444,8 +458,6 @@ class Node:
         self.LR_index = None  # if lateral root, denote by index
         self.pedge = None # id of parent edge incident upon node
         self.pedge_color = "green"
-        self.canvas = canvas # node's home canvas. careful with scopes and instances!
-        self.tree = tree # node's home tree. ditto
 
 
 ############## TEST! must fix insertion logic for [children]
@@ -454,7 +466,7 @@ class Node:
         # easy case (self has degree == 1): just insert
         if len(self.children) == 1:
             obj.children.append(self.children[0])  # new node becomes parent of old child
-            del self.children[0]
+            del self.children[0]   ## check
             self.children.append(obj) # and becomes the new child
 
             if self.is_PR is False: # if inserting on an LR
@@ -462,7 +474,9 @@ class Node:
 
             # finally, shift everything downstream 1 level lower
             obj.children[0].depth += 1
-            self.tree.DFS(obj.children[0])
+
+            ## TODO shift scope so this works:
+            # self.tree.DFS(obj.children[0])
 
         # hard case (self is a branching point with degree > 1): need more info
         # ask user to select the new child as well (sandwich)
@@ -491,25 +505,21 @@ class Node:
 
     def select(self):
         self.is_selected = True
-        self.canvas.itemconfig(self.shape_val, fill="red", outline="red", width=2)
 
     def deselect(self):
         self.is_selected = False
-        self.canvas.itemconfig(self.shape_val, fill="white", outline="white", width=1)
-
-
 
 
 class Tree:
     '''An acyclic, undirected, connected, hierarchical collection of nodes.'''
-    def __init__(self):
+    def __init__(self, path):
         self.nodes = []
         self.edges = []
         self.day = 1  # track day of timeseries GIF
         self.plant = None  # ID of plant on plate (e.g. A-E, from left to right)
         self.is_shown = True # toggle display of edges
         self.top = None  # keep track of root node at top of tree
-
+        self.path = path # path to image source file where tree is being made
 
     def add_node(self, obj, inserting):
         hologram = copy.deepcopy(self) # save tree each time a node is to be added
@@ -527,12 +537,14 @@ class Tree:
                         draw = (n, obj) # call draw_edge once back at the UI level in place_node()
                     else:
                         n.add_child(obj)
+                        draw = None
 
         
         else:  # if no nodes yet assigned
             obj.depth = 0
             obj.relcoords = (0, 0)
             self.top = obj
+            draw = None
 
         # finally, add to tree (avoid self-assignment)
         self.nodes.append(obj)
@@ -604,7 +616,7 @@ class Tree:
         base.wait_window(top) # wait for a button to be pressed; check this still works ##
 
 
-    def make_file(self, input_path):
+    def make_file(self, event):
         '''Output tree data to file.'''
         if self.plant is None: # get plant ID when called for the first time
             self.popup()
@@ -619,7 +631,7 @@ class Tree:
         ordered_tree = sorted(ordered_tree, key=lambda node: node.depth)
 
         # prepare output file
-        source = Path(input_path.replace(" ","")).stem  # input name, no spaces
+        source = Path(self.path.replace(" ","")).stem  # input name, no spaces
         
         # need this for first unit test; fix
         #source = input_path.stem
