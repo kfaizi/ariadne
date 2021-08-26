@@ -145,6 +145,9 @@ class TracerUI(tk.Frame):
         self.canvas.bind('d', self.delete)
         self.canvas.bind('t', self.show_tree)
 
+        self.canvas.bind('x', self.EG_highlight_root)
+
+
         # place widgets using grid
         self.menu.grid(row=0, column=0, rowspan=4, sticky='news')
         self.title_frame.grid(row=0, column=1, columnspan=2, sticky='ew')
@@ -269,6 +272,8 @@ class TracerUI(tk.Frame):
         # turn off override mode after placing new point
         if self.prox_override:
             self.override(event)
+
+        self.tree.index_LRs()
     
     def override(self, event):
         '''Override proximity limit on node placement.'''
@@ -313,9 +318,9 @@ class TracerUI(tk.Frame):
         '''Draw an edge between 2 nodes, and add it to the tree.'''
         ## TODO mid
         ## comment this better
-        if child.is_PR:
+        if child.root_degree == 0:
             color = 'green'
-        elif (parent.is_PR) and not (child.is_PR): # child is new LR
+        elif (parent.root_degree == 0) and not (child.root_degree == 0): # child is new LR
             color = self.get_color()
         else: # child is part of existing LR
             color = parent.pedge_color
@@ -417,13 +422,15 @@ class TracerUI(tk.Frame):
         ## TODO how does this behave if you delete a node with children?
         new_tree = []
         hologram = copy.deepcopy(self.tree)
-        self.history.append(hologram) # save tree each time a node is to be deleted
+        self.history.append(hologram) # save tree each time a node/nodes is/are to be deleted
 
         for n in self.tree.nodes:
             # first delete references to selected points in their parents
             for m in n.children:
                 if m.is_selected:
                     n.children.remove(m)
+
+## TODO if deletion will remove an LR, must lower self.num_LRs to match
 
             # then remove the points themselves
             if n.is_selected:
@@ -442,6 +449,61 @@ class TracerUI(tk.Frame):
                 self.canvas.itemconfig(n.shape_val, fill="red", outline="red", width=2)
             else:
                 self.canvas.itemconfig(n.shape_val, fill="white", outline="white", width=1)
+    
+
+
+    def highlight_root(self, n):
+        '''Highlight a particular root on the canvas, based on a given node.'''
+        # if the node belongs to >1 root, skip
+        if len(n.children) > 1:
+            return
+        else:
+            targets = []
+
+            if n.root_degree == 0:
+                for m in self.tree.nodes:
+                    if m.root_degree == 0:
+                        targets.append(m)
+            else:
+                self.tree.index_LRs()
+                LR = n.LR_index
+                for m in self.tree.nodes:
+                    if m.LR_index == LR:
+                        targets.append(m)
+            
+            for i in targets:
+                self.canvas.itemconfig(i.shape_val, fill='green', outline='green', width='2')
+                
+    # this is a test. need 1) reversibility, 2) root (not node) highlighting
+
+
+
+    def EG_highlight_root(self, event):
+
+        # if the node belongs to >1 root, skip
+        for point in self.tree.nodes:
+            if point.is_selected:
+                n = point
+
+        if len(n.children) > 1:
+            return
+        else:
+            targets = []
+
+            if n.root_degree == 0:
+                for m in self.tree.nodes:
+                    if m.root_degree == 0:
+                        targets.append(m)
+            else:
+                self.tree.index_LRs()
+                LR = n.LR_index
+                for m in self.tree.nodes:
+                    if m.LR_index == LR:
+                        targets.append(m)
+            
+            for i in targets:
+                self.canvas.itemconfig(i.shape_val, fill='green', outline='green', width='2')
+                
 
 class Node:
     '''An (x,y,0) point along a root.'''
@@ -453,55 +515,12 @@ class Node:
         self.is_selected = False
         self.is_visited = False # for DFS; remember to clear it!
         self.depth = None # depth of node in the tree, relative to root
-        self.children = []  ## WORKING ON THIS (TODO)
-        self.is_PR = True  # primary root
-        self.LR_index = None  # if lateral root, denote by index
+        self.children = []
+        self.LR_index = None  # each distinct LR has a unique index
+        self.root_degree = None # 0 = PR, 1 = primary LR, 2 = secondary LR, None = not yet determined
+        
         self.pedge = None # id of parent edge incident upon node
         self.pedge_color = "green"
-
-
-############## TEST! must fix insertion logic for [children]
-
-    def insert_child(self, obj): # when inserting is True
-        # easy case (self has degree == 1): just insert
-        if len(self.children) == 1:
-            obj.children.append(self.children[0])  # new node becomes parent of old child
-            del self.children[0]   ## check
-            self.children.append(obj) # and becomes the new child
-
-            if self.is_PR is False: # if inserting on an LR
-                obj.is_PR = False
-
-            # finally, shift everything downstream 1 level lower
-            obj.children[0].depth += 1
-
-            ## TODO shift scope so this works:
-            # self.tree.DFS(obj.children[0])
-
-        # hard case (self is a branching point with degree > 1): need more info
-        # ask user to select the new child as well (sandwich)
-        ### TODO
-
-#########
-
-    def add_child(self, obj): # when not inserting
-
-        if len(self.children) == 0:
-            if self.is_PR is False:  # if parent is an LR
-                obj.is_PR = False
-        else:
-            obj.is_PR = False
-        
-        self.children.append(obj)
-
-
-        # else: # if the selected node has 3 children, don't add the new node
-        #     print("Error: all 3 children already assigned to point", self)
-        #     w.delete(obj.shape_val)
-## This is a problem! No return = oval deleted but node still added to tree!
-# could break ternary assumptions! need to rectify
-
-##################
 
     def select(self):
         self.is_selected = True
@@ -520,30 +539,30 @@ class Tree:
         self.is_shown = True # toggle display of edges
         self.top = None  # keep track of root node at top of tree
         self.path = path # path to image source file where tree is being made
+        self.num_LRs = 0 # use for indexing
 
     def add_node(self, obj, inserting):
+        '''Add a node to the tree.'''
         hologram = copy.deepcopy(self) # save tree each time a node is to be added
 
         if self.nodes: # non-empty
             for n in self.nodes:
                 if n.is_selected:
                     obj.depth = n.depth + 1  # child is one level lower
-                    # since the first node will always be the root node,
-                    # we calculate relcoords relative to it (nodes[0]):
                     obj.relcoords = ((obj.coords[0]-(self.nodes[0].coords[0])), (obj.coords[1]-(self.nodes[0].coords[1])))
 
                     if inserting is True:
-                        n.insert_child(obj)
+                        self.insert_child(n, obj)
                         draw = (n, obj) # call draw_edge once back at the UI level in place_node()
                     else:
-                        n.add_child(obj)
+                        self.add_child(n, obj)
                         draw = None
 
-        
         else:  # if no nodes yet assigned
             obj.depth = 0
             obj.relcoords = (0, 0)
             self.top = obj
+            obj.root_degree = 0
             draw = None
 
         # finally, add to tree (avoid self-assignment)
@@ -551,6 +570,34 @@ class Tree:
 
         return hologram, draw
 
+##########################
+    def insert_child(self, curr, new):
+        '''Assign child when using insertion mode.'''
+        if len(curr.children) == 1: # easy case
+            new.children.append(curr.children[0])
+            del curr.children[0]
+            curr.children.append(new)
+
+            if curr.root_degree == 0:
+                new.root_degree = 0
+            
+            new.children[0].depth += 1
+            self.DFS(new.children[0])
+        
+        else: # need more input
+            pass
+
+            
+
+##########################
+
+    def add_child(self, curr, new):
+        '''Assign child in all other cases.'''
+        if len(curr.children) == 0:
+            if curr.root_degree == 0:
+                new.root_degree = 0
+        
+        curr.children.append(new)
 
     def DFS(self, root):
         '''Walk tree depth-first and increment subtree depths +1. For insertion mode.'''
@@ -565,21 +612,32 @@ class Tree:
         for node in self.nodes:
             node.is_visited = False
 
-    def index_LRs(self, root):
+    def index_LRs(self):
         '''Walk tree breadth-first and assign indices to lateral roots.'''
+        # assumption 1: time-series data, indexed often (so primary LRs will always get indexed before secondary LRs)
+        # assumption 2: no LRs of higher degree than secondary 
         q = Queue()
-        q.put(root)
-        LR = 0
+        q.put(self.top)
 
         while not q.empty():
             curr = q.get()
-            # arbitrarily, we assign LR indices left-to-right (skipping the PR)
+            # arbitrarily, we assign LR indices left-to-right
             # sort by x-coordinate
-            children = sorted(curr.children, key=lambda x: x.relcoords[0])
-            for n in children:
-                n.LR_index = LR
-                LR += 1
+            curr_children = sorted(curr.children, key=lambda x: x.relcoords[0])
+
+            for n in curr_children:
+                if n.root_degree is None: # only index nodes that haven't been already
+                    if len(curr_children) == 1: # then n is part of the same root as curr
+                        n.root_degree = curr.root_degree
+                        if curr.LR_index is not None:
+                            n.LR_index = curr.LR_index
+                    else: # curr is a branch point (aka LR found)
+                        print(self.num_LRs)
+                        n.root_degree = curr.root_degree + 1
+                        n.LR_index = self.num_LRs
+                        self.num_LRs += 1
                 q.put(n)
+
 
     def popup(self):
         '''Popup menu for plant ID assignment.'''
@@ -616,6 +674,7 @@ class Tree:
         base.wait_window(top) # wait for a button to be pressed; check this still works ##
 
 
+##############################
     def make_file(self, event):
         '''Output tree data to file.'''
         if self.plant is None: # get plant ID when called for the first time
@@ -623,7 +682,7 @@ class Tree:
             if self.plant is None: # user didn't update ID (pressed cancel)
                 return
 
-        self.index_LRs(self.top)
+        self.index_LRs()
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
         ordered_tree = sorted(self.nodes, key=lambda node: (node.LR_index is None, node.LR_index))
@@ -675,7 +734,7 @@ class Tree:
 
                 h.write("\n")
 
-
+###################################################3
 
 
 
