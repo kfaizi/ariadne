@@ -89,7 +89,6 @@ class TracerUI(tk.Frame):
         self.canvas = tk.Canvas(self.frame, width=600, height=700, bg='gray')
 
         # useful flags
-        self.selected_all = False # tracks whether all nodes are currently selected
         self.prox_override = False # tracks whether proximity override is on
         self.inserting = False # tracks whether insertion mode is on
         self.tree_flag = 'normal' # used for hiding/showing tree's edges
@@ -134,15 +133,13 @@ class TracerUI(tk.Frame):
         self.canvas.bind('q', self.previous_day)
 
         # history and undo
-        self.history = deque(maxlen=6) # gets updated on every add_node() or delete()
+        self.history = deque(maxlen=6) # gets updated on every add_node()
         self.canvas.bind('<Control-z>', self.undo)
 
         # miscellaneous keybinds
         self.canvas.bind("<Button 1>", self.place_node)
         self.canvas.bind('r', self.override)
         self.canvas.bind('i', self.insert)
-        self.canvas.bind('a', self.select_all)
-        self.canvas.bind('d', self.delete)
         self.canvas.bind('t', self.show_tree)
 
         self.canvas.bind('x', self.EG_highlight_root)
@@ -226,14 +223,6 @@ class TracerUI(tk.Frame):
         y = self.canvas.canvasy(event.y)
         self.canvas.focus_set()
 
-        # some guardrails for the selected_all flag
-        if self.selected_all is True and len(self.tree.nodes) == 0:  # quietly change selected_all flag to False when no points exist (logically)
-            self.select_all(event)
-        elif self.selected_all is True and len(self.tree.nodes) > 0:
-            print("Can't assign child to multiple nodes at once! Select just one and try again.")
-            self.select_all(event)
-            return
-
         # check click proximity to existing nodes
         if not self.prox_override:
             for n in self.tree.nodes:
@@ -246,7 +235,7 @@ class TracerUI(tk.Frame):
                     return
 
         # place a new point and select it
-        idx = self.canvas.create_oval(x, y, x+2, y+2, width=0, fill="red")
+        idx = self.canvas.create_oval(x, y, x+2, y+2, width=2, fill="red", outline="red")
         point = Node((x, y), idx, self.canvas, self.tree)
 
         hologram, draw = self.tree.add_node(point, self.inserting)
@@ -352,19 +341,6 @@ class TracerUI(tk.Frame):
         self.colors += 1
         return palette[pos] # next color
 
-    def select_all(self, event):
-        '''Select/deselect all nodes. Potentially hazardous.'''
-        ## remove this, and any refs (e.g. in place_node)
-        if not self.selected_all:
-            for n in self.tree.nodes:
-                n.select()
-            self.selected_all = True
-        else:
-            for n in self.tree.nodes:
-                n.deselect()
-            self.selected_all = False
-        self.color_nodes()
-    
     def undo(self, event):
         '''Undo the last graph-altering action.'''
         ## comment this better
@@ -382,9 +358,9 @@ class TracerUI(tk.Frame):
                 x = n.coords[0]
                 y = n.coords[1]
                 if not n.is_selected:
-                    n.shape_val = self.canvas.create_oval(x,y,x+2,y+2,width=0,fill="white")
+                    n.shape_val = self.canvas.create_oval(x,y,x+2,y+2,width=1,fill="white", outline='white')
                 else:
-                    n.shape_val = self.canvas.create_oval(x,y,x+2,y+2,width=0,fill="red")
+                    n.shape_val = self.canvas.create_oval(x,y,x+2,y+2,width=2,fill="red", outline="red")
             
             self.redraw()
 
@@ -417,30 +393,6 @@ class TracerUI(tk.Frame):
         for e in self.tree.edges:
             self.canvas.itemconfig(e, state=f'{self.tree_flag}')
 
-    def delete(self, event):
-        '''Remove selected nodes, including parent references.'''
-        ## TODO how does this behave if you delete a node with children?
-        new_tree = []
-        hologram = copy.deepcopy(self.tree)
-        self.history.append(hologram) # save tree each time a node/nodes is/are to be deleted
-
-        for n in self.tree.nodes:
-            # first delete references to selected points in their parents
-            for m in n.children:
-                if m.is_selected:
-                    n.children.remove(m)
-
-## TODO if deletion will remove an LR, must lower self.num_LRs to match
-
-            # then remove the points themselves
-            if n.is_selected:
-                self.canvas.delete(n.shape_val)
-            else:
-                new_tree.append(n)
-            
-        self.tree.nodes = new_tree
-        self.redraw()
-        self.color_nodes()
 
     def color_nodes(self):
         '''Refresh node colors to reflect whether they are selected/deselected.'''
@@ -490,15 +442,14 @@ class TracerUI(tk.Frame):
         else:
             targets = []
 
-            if n.root_degree == 0:
+            if n.root_degree == 0: # highlight PR
                 for m in self.tree.nodes:
                     if m.root_degree == 0:
                         targets.append(m)
-            else:
-                self.tree.index_LRs()
-                LR = n.LR_index
+            else: # highlight an LR
+                # self.tree.index_LRs() ## i don't think we need this here
                 for m in self.tree.nodes:
-                    if m.LR_index == LR:
+                    if m.LR_index == n.LR_index:
                         targets.append(m)
             
             for i in targets:
@@ -632,7 +583,6 @@ class Tree:
                         if curr.LR_index is not None:
                             n.LR_index = curr.LR_index
                     else: # curr is a branch point (aka LR found)
-                        print(self.num_LRs)
                         n.root_degree = curr.root_degree + 1
                         n.LR_index = self.num_LRs
                         self.num_LRs += 1
