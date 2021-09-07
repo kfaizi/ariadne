@@ -44,7 +44,8 @@ def make_graph(target):
                         if level == parent[1][0] and group_num == parent[1][1]: # check that the expected and actual positions of the child match
                             G.add_edge(node_num, parent[0], length = distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
                         else:
-                            return f"Edge assignment failed: {parent}; {level}; {group_num}; {info}"
+                            print(f"ERROR: Edge assignment failed: {parent}; {level}; {group_num}; {info}")
+                            # return f"Edge assignment failed: {parent}; {level}; {group_num}; {info}"
                             #return G
                     # place all descendants of the current node in the queue for processing in future rounds
                     children = info[1].split()
@@ -58,7 +59,8 @@ def make_graph(target):
                     if level == parent[1][0] and group_num == parent[1][1]:
                         G.add_edge(node_num, parent[0], length = distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
                     else:
-                        return "Edge assignment failed: terminal node."
+                        print("ERROR: Edge assignment failed: terminal node.")
+                        # return "Edge assignment failed: terminal node."
                 node_num += 1
                 group_num += 1
     #return "Done!" (used for csv creation)
@@ -106,7 +108,7 @@ def make_graph_alt(target):
     return G
 
 def save_plot(path, name, title):
-    '''Plot a Pareto front and save to .jpg'''
+    '''Plot a Pareto front and save to .jpg.'''
 
     G = make_graph(path)
     # check that graph is indeed a tree (acyclic, undirected, connected)
@@ -126,9 +128,8 @@ def save_plot(path, name, title):
     for i in randoms:
         plt.plot(i[0], i[1], marker='+', color='green', markersize=4)
 
-    plt.savefig(name, bbox_inches='tight', dpi=300)
-
-    #plt.show()
+    # plt.savefig(name, bbox_inches='tight', dpi=300)
+    plt.show()
 
 
 # path, name, title
@@ -146,19 +147,48 @@ def save_plot(path, name, title):
 # for i in targets:
 #     save_plot(i[0], i[1], i[2])
 
-#save_plot('/home/kian/Lab/29_20200205-215844_028_plantB_day14.txt', '29-B-14.jpg', '-N_B_Day14')
-
-# G = make_graph('/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt')
-# random_tree_crit(G)
+# save_plot('/Users/kianfaizi/projects/test-roots/BUGS/graph breaking and str/A/1_20200205-215035_009_plantA_day8.txt', 'test.jpg', 'test')
 
 def show_skel(target):
-    '''Plot a nx graph/skel from a .txt file'''
+    '''Plot a nx graph/skel from a .txt file.'''
     G = make_graph(target)
     layout = {} # dict of nodes:positions
     for i in G.nodes.data():
         node = i[0]
         pos = i[1]['pos']
         layout[node] = pos 
-    print(layout)
     nx.draw_networkx(G, pos=layout)
     plt.show()
+
+show_skel('/Users/kianfaizi/projects/test-roots/BUGS/graph breaking and str/A/1_20200205-215035_009_plantA_day12.txt')
+
+
+def analyze(target):
+    '''Report basic root metrics for a given graph.'''
+    G = make_graph(target)
+    mcosts, scosts, actual = pareto_front(G)
+    # total len
+    print("Total length (material cost) of roots: ", mcosts)
+    # transport cost
+    print("Wiring/transport cost of roots: ", scosts)
+    # PR len
+    # the path from node 0 to a critical node which has the most nodes of degree >2 along it (most branching points)
+    # examine graph_costs calculations for help
+
+    # LR len
+
+    # LR density + number
+    # find all nodes of degree >2 (branching points)
+    # map which are on PR (primary LRs) and so on
+
+    # LR angles
+    # how is it calculated? (relative to upper PR or lower PR?)
+    # for each relevant branching point
+
+    # think about dynamics/time-series
+
+    # distance of each plant to pareto front
+
+    # distance of center-of-mass of randoms to the pareto front
+
+    # literally purchase a nice mouse for matt
