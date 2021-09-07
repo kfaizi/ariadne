@@ -1,5 +1,5 @@
-# [name pending]
-🌱 This is a small software package for analyzing images of _Arabidopsis thaliana_ roots.
+# Ariadne
+🌱 is a small software package for analyzing images of _Arabidopsis thaliana_ roots.
 
 📷 It features a GUI for semi-automated image segmentation
 
@@ -30,30 +30,26 @@ conda env create --file environment.yaml
 A new Python virtual environment, with all the necessary dependencies installed, is now ready to use. Activate it with
 
 ```
-conda activate rootmarker
+conda activate ariadne
 ```
 
 ## Use
-To do segmentation, type
+To get started, type
 
 ```
-python rootmarker.py
+python main.py
 ```
-
-Select an input image file using the resulting dialog; it will open in a new window where you can start your analysis.
 
 #### Keybinds
 * `Left-click`: place/select node. To pan, hold `Alt` or `Ctrl` and drag
-* `t`: toggle skeleton visibility (default: off)
+* `t`: toggle skeleton visibility (default: on)
 * `e`: next frame (GIFs only)
 * `q`: previous frame (GIFs only)
 * `r`: toggle proximity override. By default, clicking on or near an existing node will select it. When this override is on, a new node will be placed instead. Useful for finer control in crowded areas (default: off)
-* `i`: toggle insertion mode. By default, new nodes extend a branch (i.e., have a degree of 1). Alternatively, use insertion mode to intercalate a new node between 2 existing ones. When toggled, proximity override is automatically enabled as well. Useful for handling emering lateral roots in regions you have already segmented (default: off)
+* `i`: toggle insertion mode. By default, new nodes extend a branch (i.e., have a degree of 1). Alternatively, use insertion mode to intercalate a new node between 2 existing ones. Useful for handling emering lateral roots in regions you have already segmented (default: off)
 * `g`: Save output file
-* `a`: Select/deselect all nodes
 * `d`: Delete currently selected node(s)
 * `Ctrl-Z`: Undo last action
-
 
 
 ## References

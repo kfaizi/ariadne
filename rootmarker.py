@@ -5,11 +5,9 @@ Copyright 2020 Kian Faizi.
 
 TO-DO:
 zoom
-LR colors
 n-nary tree
 try:except for dialog errors?
 easier selection of nearby points
-add message when output created successfully?
 easy resizing UI
 '''
 
@@ -21,6 +19,8 @@ from queue import Queue
 from collections import deque
 import pytest
 import copy
+
+
 
 
 class Application(tk.Frame):
@@ -60,7 +60,7 @@ class Application(tk.Frame):
 # scan_mark(x,y): sets scanning anchor.
 
 
-class Node(object):
+class Node:
     '''An (x,y,0) point along a root.'''
 
     def __init__(self, coords, shape_val):
@@ -122,6 +122,9 @@ class Node(object):
             else:
                 print("Error: all 3 children already assigned to point", self)
                 w.delete(obj.shape_val)
+                ## This is a problem! No return = oval deleted but node still added to tree!
+# could break ternary assumptions! need to rectify
+
 
     def select(self):
         self.is_selected = True
@@ -132,14 +135,14 @@ class Node(object):
         w.itemconfig(self.shape_val, fill="white", outline="white", width=0)
 
 
-class Tree(object):
+class Tree:
     '''A hierarchical collection of nodes.'''
 
     def __init__(self):
         self.nodes = []
         self.edges = []
         self.day = 1  # day (frame) of timeseries (GIF)
-        self.plant = "TEST"  # ID of plant on plate (A-E, from left to right)
+        self.plant = None  # ID of plant on plate (A-E, from left to right)
         self.is_shown = True
         self.top = None  # node object at top of tree (root node)
 
@@ -205,8 +208,48 @@ class Tree(object):
                     curr.mid.LR_index = curr.LR_index
                 q.put(curr.mid)
 
+
+    def popup(self):
+        '''Popup menu for plant ID assignment.'''
+        top = tk.Toplevel()
+        top.geometry('350x200')
+
+        label = tk.Label(top, text="Please select a plant ID:")
+        label.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        
+        v = tk.StringVar() # holds plant ID
+
+        a = tk.Radiobutton(top, text='A', variable=v, value='A', bg='white', fg='black')
+        a.pack()
+        a.select() # default option for nicer aesthetics
+
+        tk.Radiobutton(top, text='B', variable=v, value='B', bg='white', fg='black').pack()
+
+        tk.Radiobutton(top, text='C', variable=v, value='C', bg='white', fg='black').pack()
+
+        tk.Radiobutton(top, text='D', variable=v, value='D', bg='white', fg='black').pack()
+
+        tk.Radiobutton(top, text='E', variable=v, value='E', bg='white', fg='black').pack()
+        
+        def updater():
+            top.destroy()
+            self.plant = v.get()
+
+        ok = tk.Button(top, text='OK', command=updater)
+        cancel = tk.Button(top, text='Cancel', command=top.destroy)
+        ok.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        cancel.pack(side=tk.BOTTOM, expand=True, fill=tk.BOTH)
+
+        base.wait_window(top) # wait for a button to be pressed
+
     def make_file(self, input_path):
         '''Output tree data to file.'''
+        if self.plant is None: # get plant ID when called for the first time
+            self.popup()
+        
+        if self.plant is None: # user didn't update ID (pressed cancel)
+            return
+
         self.index_LRs(self.top)
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
@@ -220,7 +263,7 @@ class Tree(object):
         # need this for first unit test; fix
         #source = input_path.stem
 
-        output_name = f"{source}_plant{self.plant}_day{self.day}.txt" # hardcoded ID :(
+        output_name = f"{source}_plant{self.plant}_day{self.day}.txt"
         repo_path = Path("./").resolve()
         output_path = repo_path.parent / output_name
 
@@ -255,6 +298,9 @@ class Tree(object):
                     kidcount += 1
 
                 h.write("\n")
+
+
+
 
 
 def undo(event):
@@ -371,42 +417,16 @@ def select_all(event):
         selected_all = False
 
 
-def select_parent(event):
-    '''Select the parent of the last placed point.'''
-    global tree
-
-    ### REFACTOR ###
-
-    for n in tree.nodes:
-        if n.left is not None:
-            if n.left.is_selected:
-                n.left.deselect()
-                n.select()
-                return
-
-        if n.mid is not None:
-            if n.mid.is_selected:
-                n.mid.deselect()
-                n.select()
-                return
-
-        if n.right is not None:
-            if n.right.is_selected:
-                n.right.deselect()
-                n.select()
-                return
-
-
-def show_info(event):
-    '''Print information for the node clicked.'''
-    x = w.canvasx(event.x)
-    y = w.canvasy(event.y)
-    for n in tree.nodes:  # check click proximity to existing points
-        if ((abs(n.coords[0]-x)) < 10) and ((abs(n.coords[1]-y)) < 10):
-            print(f"Node relcoords ({n.relcoords[0]}, {n.relcoords[1]}); node index {n.index}; node shapeval {n.shape_val}; node is selected {n.is_selected}")
-            # w.create_text(x, y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
-            print(w.focus())
-            return
+# def show_info(event):
+#     '''Print information for the node clicked.'''
+#     x = w.canvasx(event.x)
+#     y = w.canvasy(event.y)
+#     for n in tree.nodes:  # check click proximity to existing points
+#         if ((abs(n.coords[0]-x)) < 10) and ((abs(n.coords[1]-y)) < 10):
+#             print(f"Node relcoords ({n.relcoords[0]}, {n.relcoords[1]}); node index {n.index}; node shapeval {n.shape_val}; node is selected {n.is_selected}")
+#             # w.create_text(x, y, anchor="nw", text=f"{n.relcoords[0]},{n.relcoords[1]}", fill="white")
+#             print(w.focus())
+#             return
 
 
 def override(event):
@@ -601,7 +621,8 @@ inserting_text = ""  # insertion mode indicator
 day_indicator = ""  # gif frame
 tree_flag = "normal"
 
-base = tk.Tk()  # by Tk convention this is "root"; avoiding ambiguity
+base = tk.Tk() # main window
+base.title("ariadne")
 tree = Tree()  # instantiate first tree
 
 history = deque(maxlen = 6)
@@ -633,7 +654,6 @@ if __name__ == "__main__":
 
     # keybinds
     w.bind("<Button 1>", place_node)
-    w.bind("<Button 2>", show_info)
     w.bind("e", next_day)
     w.bind("q", previous_day)
     w.bind("d", delete_button)
