@@ -142,8 +142,12 @@ class TracerUI(tk.Frame):
         self.canvas.bind('i', self.insert)
         self.canvas.bind('t', self.show_tree)
 
+        # highlighting/insertion tests
+        self.highlight_choice = 0 # tracks highlighted root when cycling
+        self.canvas.bind("<Right>", self.cycle_highlights)
         self.canvas.bind('x', self.EG_highlight_root)
 
+        self.canvas.bind('<Button 2>', self.click_info)
 
         # place widgets using grid
         self.menu.grid(row=0, column=0, rowspan=4, sticky='news')
@@ -156,6 +160,11 @@ class TracerUI(tk.Frame):
         self.frame.grid_rowconfigure(1, weight=1)
         self.frame.grid_columnconfigure(1, weight=1)
 
+    def click_info(self, event):
+        '''Show node metadata on right click (for debugging).'''
+        for n in self.tree.nodes:  # check click proximity to existing points
+            if ((abs(n.coords[0]-event.x)) < 10) and ((abs(n.coords[1]-event.y)) < 10):
+                self.canvas.create_text(event.x, event.y, anchor="nw", text=f"d{n.depth}/lri{n.LR_index}/deg{n.root_degree}", fill="white")
 
     def scroll_start(self, event):
         '''Mouse panning start.'''
@@ -234,15 +243,23 @@ class TracerUI(tk.Frame):
                     self.color_nodes()
                     return
 
+        # if inserting, check that root_choice exists (if needed)
+        if self.inserting:
+            for n in self.tree.nodes:
+                if n.is_selected:
+                    if len(n.children) > 1:
+                        if self.tree.root_choice is None:
+                            print("Please use the right arrow key to choose which root you'd like to insert on.")
+                            return
+
         # place a new point and select it
         idx = self.canvas.create_oval(x, y, x+2, y+2, width=2, fill="red", outline="red")
         point = Node((x, y), idx, self.canvas, self.tree)
 
         hologram, draw = self.tree.add_node(point, self.inserting)
-        self.history.append(hologram) # save tree each time a node is to be added
+        self.history.append(hologram) # save tree as it was just before new node was added
 
-        if draw is not None:
-            self.draw_edge(draw[0], draw[1])
+        self.tree.index_LRs()
 
         if self.inserting:
             self.redraw() # update edges following add_node() above
@@ -255,6 +272,9 @@ class TracerUI(tk.Frame):
                     self.draw_edge(n, point)
                 n.deselect()
    
+        if draw is not None:
+            self.draw_edge(draw[0], draw[1])
+
         point.select()
         self.color_nodes()
 
@@ -262,8 +282,16 @@ class TracerUI(tk.Frame):
         if self.prox_override:
             self.override(event)
 
-        self.tree.index_LRs()
-    
+        # remove any leftover highlights
+        to_clear = set()
+        for m in self.tree.nodes:
+            if m.is_highlighted:
+                to_clear.add(m)
+        self.highlight_root(to_clear)
+
+        # reset root_choice
+        self.tree.root_choice = None
+
     def override(self, event):
         '''Override proximity limit on node placement.'''
         if self.prox_override:
@@ -296,7 +324,7 @@ class TracerUI(tk.Frame):
             if selected_count > 1:
                 print("Warning: can't insert with >1 point selected")
                 return
-            
+
             self.inserting = True
             self.inserting_indicator = 'inserting=ON'
 
@@ -307,11 +335,14 @@ class TracerUI(tk.Frame):
         '''Draw an edge between 2 nodes, and add it to the tree.'''
         ## TODO mid
         ## comment this better
-        if child.root_degree == 0:
+        if child.root_degree == 0: # PR
             color = 'green'
-        elif (parent.root_degree == 0) and not (child.root_degree == 0): # child is new LR
-            color = self.get_color()
-        else: # child is part of existing LR
+        elif parent.root_degree < child.root_degree: # branch point
+            if child.pedge_color is None: # nascent LR
+                color = self.get_color()
+            else: # existing LR, already indexed (insertion mode)
+                color = child.pedge_color
+        else: # LR
             color = parent.pedge_color
         
         edge = self.canvas.create_line(parent.coords[0], parent.coords[1], child.coords[0], child.coords[1], fill=color, state=f'{self.tree_flag}')
@@ -403,35 +434,62 @@ class TracerUI(tk.Frame):
                 self.canvas.itemconfig(n.shape_val, fill="white", outline="white", width=1)
     
 
-
-    def highlight_root(self, n):
-        '''Highlight a particular root on the canvas, based on a given node.'''
-        # if the node belongs to >1 root, skip
-        if len(n.children) > 1:
-            return
+    def find_root(self, n):
+        '''Return all the nodes corresponding to the root that a node (n) belongs to.'''
+        # if the node belongs to >1 root (branch point), skip.
+        # ^ no good, should cover every case!
+        if len(n.children) > 1: # as a result, sometimes highlighting doesn't occur when desired
+            return set()
         else:
-            targets = []
-
-            if n.root_degree == 0:
+            targets = set()
+            if n.root_degree == 0: # PR
                 for m in self.tree.nodes:
                     if m.root_degree == 0:
-                        targets.append(m)
-            else:
-                self.tree.index_LRs()
-                LR = n.LR_index
+                        targets.add(m)
+            else: # LR
                 for m in self.tree.nodes:
-                    if m.LR_index == LR:
-                        targets.append(m)
-            
-            for i in targets:
-                self.canvas.itemconfig(i.shape_val, fill='green', outline='green', width='2')
-                
-    # this is a test. need 1) reversibility, 2) root (not node) highlighting
+                    if m.LR_index ==  n.LR_index:
+                        targets.add(m)
 
+            return targets
+
+    def highlight_root(self, targets):
+        '''Highlight/unhighlight a set of nodes.'''
+        for i in targets:
+            if not i.is_highlighted:
+                self.canvas.itemconfig(i.shape_val, fill='yellow', outline='yellow', width='2')
+                i.is_highlighted = True
+            else: # un-highlight
+                self.canvas.itemconfig(i.shape_val, fill='white', outline='white', width='1')
+                i.is_highlighted = False
+
+
+    def cycle_highlights(self, event):
+        '''Cycle thru children of a branch point (for insertion mode).'''
+        if not self.inserting: # don't do anything unless insertion mode is on
+            return
+        else:
+            for n in self.tree.nodes:
+                if n.is_selected:
+                    # first, clear all current highlights
+                    to_clear = set()
+                    for m in self.tree.nodes:
+                        if m.is_highlighted:
+                            to_clear.add(m)
+                    self.highlight_root(to_clear)
+
+                    # now, highlight the current highlight_choice
+                    pos = (self.highlight_choice - len(n.children)) % len(n.children)
+                    self.tree.root_choice = n.children[pos] # save the current choice
+
+                    to_show = self.find_root(self.tree.root_choice)
+                    self.highlight_root(to_show)
+
+                    # get ready for next call
+                    self.highlight_choice += 1
 
 
     def EG_highlight_root(self, event):
-
         # if the node belongs to >1 root, skip
         for point in self.tree.nodes:
             if point.is_selected:
@@ -469,9 +527,10 @@ class Node:
         self.children = []
         self.LR_index = None  # each distinct LR has a unique index
         self.root_degree = None # 0 = PR, 1 = primary LR, 2 = secondary LR, None = not yet determined
-        
+        self.is_highlighted = False
+
         self.pedge = None # id of parent edge incident upon node
-        self.pedge_color = "green"
+        self.pedge_color = None
 
     def select(self):
         self.is_selected = True
@@ -491,6 +550,7 @@ class Tree:
         self.top = None  # keep track of root node at top of tree
         self.path = path # path to image source file where tree is being made
         self.num_LRs = 0 # use for indexing
+        self.root_choice = None # which node to use as child when inserting
 
     def add_node(self, obj, inserting):
         '''Add a node to the tree.'''
@@ -529,17 +589,31 @@ class Tree:
             del curr.children[0]
             curr.children.append(new)
 
-            if curr.root_degree == 0:
-                new.root_degree = 0
-            
-            new.children[0].depth += 1
-            self.DFS(new.children[0])
+            # if curr.root_degree == 0:
+            #     new.root_degree = 0
+            new.root_degree = curr.root_degree
+            new.LR_index = curr.LR_index
+            new.pedge_color = curr.pedge_color
         
-        else: # need more input
-            pass
+        else: # use root_choice
+            new.children.append(self.root_choice)
+            curr.children.remove(self.root_choice)
+            curr.children.append(new)
 
+            # if self.root_choice.root_degree == 0:
+            #     new.root_degree = 0
             
+            # if self.root_choice.LR_index is not None:
+            #     new.LR_index = self.root_choice.LR_index
 
+            new.root_degree = self.root_choice.root_degree
+            new.LR_index = self.root_choice.LR_index
+            new.pedge_color = self.root_choice.pedge_color       
+            
+        new.children[0].depth += 1
+        self.DFS(new.children[0])
+
+     
 ##########################
 
     def add_child(self, curr, new):
@@ -591,7 +665,7 @@ class Tree:
 
     def popup(self):
         '''Popup menu for plant ID assignment.'''
-        top = tk.Toplevel()
+        top = tk.Toplevel(base)
         top.geometry('350x200')
 
         label = tk.Label(top, text="Please select a plant ID:")
@@ -624,7 +698,6 @@ class Tree:
         base.wait_window(top) # wait for a button to be pressed; check this still works ##
 
 
-##############################
     def make_file(self, event):
         '''Output tree data to file.'''
         if self.plant is None: # get plant ID when called for the first time
@@ -633,23 +706,22 @@ class Tree:
                 return
 
         self.index_LRs()
+
         # sort all nodes by ascending LR index, with PR (LR_index = None) last
         # this works because False < True, and tuples are sorted element-wise
         ordered_tree = sorted(self.nodes, key=lambda node: (node.LR_index is None, node.LR_index))
+
         # then sort by depth
         ordered_tree = sorted(ordered_tree, key=lambda node: node.depth)
 
         # prepare output file
         source = Path(self.path.replace(" ","")).stem  # input name, no spaces
-        
-        # need this for first unit test; fix
-        #source = input_path.stem
-
         output_name = f"{source}_plant{self.plant}_day{self.day}.txt"
         repo_path = Path("./").resolve()
         output_path = repo_path.parent / output_name
 
         with open(output_path, "a") as h:
+
             tracker = 0  # track depth changes to output correct level
             kidcount = 0
             h.write(f"## Level: 0")
@@ -666,27 +738,20 @@ class Tree:
 
                 h.write(f"{curr.relcoords[0]} {curr.relcoords[1]} 0;".rstrip("\n"))
 
-#### TODO make work with [children]; keep this order or do full BFS?
+                # arbitrarily, we assign LR indices left-to-right
+                # sort by x-coordinate
+                curr_children = sorted(curr.children, key=lambda x: x.relcoords[0])
 
-
-                # children ordered Left-Right-Mid, since LRs indexed Left-Right
-                if curr.left is not None:
-                    h.write(f" [{curr.left.depth},{kidcount}]".rstrip("\n"))
+                for kid in curr_children:
+                    h.write(f" [{kid.depth},{kidcount}]".rstrip("\n"))
                     kidcount += 1
 
-                if curr.right is not None:
-                    h.write(f" [{curr.right.depth},{kidcount}]".rstrip("\n"))
-                    kidcount += 1
-
-                if curr.mid is not None:
-                    h.write(f" [{curr.mid.depth},{kidcount}]".rstrip("\n"))
-                    kidcount += 1
+                if curr.root_degree == 0:
+                    h.write(f" (PR, {curr.LR_index})".rstrip("\n"))
+                elif curr.root_degree > 0:
+                    h.write(f" ({curr.root_degree}LR, {curr.LR_index})".rstrip("\n"))
 
                 h.write("\n")
-
-###################################################3
-
-
 
 
 class AnalyzerUI(tk.Frame):
