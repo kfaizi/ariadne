@@ -282,15 +282,9 @@ class TracerUI(tk.Frame):
         if self.prox_override:
             self.override(event)
 
-        # remove any leftover highlights
-        to_clear = set()
-        for m in self.tree.nodes:
-            if m.is_highlighted:
-                to_clear.add(m)
-        self.highlight_root(to_clear)
-
-        # reset root_choice
+        # reset insertion tracking
         self.tree.root_choice = None
+        self.highlight_choice = 0
 
     def override(self, event):
         '''Override proximity limit on node placement.'''
@@ -307,11 +301,19 @@ class TracerUI(tk.Frame):
         # 1) select the parent for new node
         # 2) call this function
         # 3) place the new node
-        if self.inserting:
+        if self.inserting: # turn off insertion mode
             self.inserting = False
             self.inserting_indicator = ''
-            if self.prox_override:
+            if self.prox_override: # turn off override too
                 self.override(event)
+
+            # remove any leftover highlights
+            to_clear = set()
+            for m in self.tree.nodes:
+                if m.is_highlighted:
+                    to_clear.add(m)
+            self.highlight_nodes(to_clear)
+
         else:
             selected_count = 0
             for n in self.tree.nodes:
@@ -325,16 +327,17 @@ class TracerUI(tk.Frame):
                 print("Warning: can't insert with >1 point selected")
                 return
 
+            # turn on insertion mode    
             self.inserting = True
             self.inserting_indicator = 'inserting=ON'
-
+            
+            # turn on override too
             if not self.prox_override:
                 self.override(event)
     
     def draw_edge(self, parent, child):
         '''Draw an edge between 2 nodes, and add it to the tree.'''
-        ## TODO mid
-        ## comment this better
+        # TODO: test that checks if drawn edge matches the data/hierarchy
         if child.root_degree == 0: # PR
             color = 'green'
         elif parent.root_degree < child.root_degree: # branch point
@@ -434,14 +437,14 @@ class TracerUI(tk.Frame):
                 self.canvas.itemconfig(n.shape_val, fill="white", outline="white", width=1)
     
 
-    def find_root(self, n):
-        '''Return all the nodes corresponding to the root that a node (n) belongs to.'''
-        # if the node belongs to >1 root (branch point), skip.
-        # ^ no good, should cover every case!
-        if len(n.children) > 1: # as a result, sometimes highlighting doesn't occur when desired
-            return set()
+    def find_root(self, n, excluded):
+        '''Return all the nodes on the root that a node (n) belongs to, except any excluded nodes.'''
+        # TODO: can probably 
+        targets = set()
+        
+        if len(n.children) > 1: # n is a branch point, so it belongs to multiple roots
+            targets.add(n) # only highlight it
         else:
-            targets = set()
             if n.root_degree == 0: # PR
                 for m in self.tree.nodes:
                     if m.root_degree == 0:
@@ -451,9 +454,12 @@ class TracerUI(tk.Frame):
                     if m.LR_index ==  n.LR_index:
                         targets.add(m)
 
-            return targets
+        targets.discard(excluded)
 
-    def highlight_root(self, targets):
+        return targets
+
+
+    def highlight_nodes(self, targets):
         '''Highlight/unhighlight a set of nodes.'''
         for i in targets:
             if not i.is_highlighted:
@@ -466,9 +472,7 @@ class TracerUI(tk.Frame):
 
     def cycle_highlights(self, event):
         '''Cycle thru children of a branch point (for insertion mode).'''
-        if not self.inserting: # don't do anything unless insertion mode is on
-            return
-        else:
+        if self.inserting:
             for n in self.tree.nodes:
                 if n.is_selected:
                     # first, clear all current highlights
@@ -476,17 +480,21 @@ class TracerUI(tk.Frame):
                     for m in self.tree.nodes:
                         if m.is_highlighted:
                             to_clear.add(m)
-                    self.highlight_root(to_clear)
+                    self.highlight_nodes(to_clear)
 
                     # now, highlight the current highlight_choice
                     pos = (self.highlight_choice - len(n.children)) % len(n.children)
                     self.tree.root_choice = n.children[pos] # save the current choice
 
-                    to_show = self.find_root(self.tree.root_choice)
-                    self.highlight_root(to_show)
+                    to_show = set()
+                    to_show.add(self.tree.root_choice)
+                    self.highlight_nodes(to_show)
 
                     # get ready for next call
                     self.highlight_choice += 1
+        else:
+            self.base.bell()
+
 
 
     def EG_highlight_root(self, event):
