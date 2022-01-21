@@ -13,6 +13,10 @@ import math
 from queue import Queue
 from pareto_functions import pareto_front, random_tree
 import matplotlib.pyplot as plt
+import re
+import pickle
+import numpy as np
+from collections import Counter
 
 # parser = argparse.ArgumentParser(description='select file')
 # parser.add_argument('-i', '--input', help='Full path to input file', required=True)
@@ -35,37 +39,56 @@ def make_graph(target):
                 continue
             else:
                 info = line.rstrip().split("; ")
-                if len(info) > 1: # node has degree > 1
-                    coords = tuple(int(float(i)) for i in info[0].split())[0:2] # change output coords from floats to ints
-                    G.add_node(node_num, pos = coords)
+
+                coords = tuple(int(float(i)) for i in info[0].split())[0:2] # change output coords from floats to ints
+                metadata = re.findall(r'\(.+?\)|\[.+?\]', info[1]) # find chunks in brackets or parenthesis
+
+                root_metadata = metadata[-1] # eg (PR, None)
+                child_metadata = [] # eg ['[1,0]']
+
+                for el in metadata:
+                    if el != root_metadata:
+                        child_metadata.append(el)
+                
+                if not child_metadata: # terminal node, no children
+                    G.add_node(node_num, pos=coords)
+                    parent = q.get()
+
+                    parent_level = parent[1][0]
+                    parent_group = parent[1][1]
+
+                    if level == parent_level and group_num == parent_group:
+                        G.add_edge(node_num, parent[0], length=distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
+                    else:
+                        print("ERROR: edge assignment failed (terminal node)")
+
+                else:
+                    G.add_node(node_num, pos=coords)
+
                     if not q.empty():
                         parent = q.get()
-                        # print(parent, level, group_num, info)
-                        if level == parent[1][0] and group_num == parent[1][1]: # check that the expected and actual positions of the child match
-                            G.add_edge(node_num, parent[0], length = distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
+
+                        parent_level = parent[1][0]
+                        parent_group = parent[1][1]
+
+                        if level == parent_level and group_num == parent_group:
+                            G.add_edge(node_num, parent[0], length=distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
                         else:
-                            print(f"ERROR: Edge assignment failed: {parent}; {level}; {group_num}; {info}")
-                            # return f"Edge assignment failed: {parent}; {level}; {group_num}; {info}"
-                            #return G
-                    # place all descendants of the current node in the queue for processing in future rounds
-                    children = info[1].split()
-                    for child in children:
-                        q.put((node_num, list(map(int, child.strip('[]').split(','))))) # converts each child object from list of strings to list of ints
-                else: # terminal node (degree == 1)
-                    coords = tuple(int(float(i)) for i in info[0].rstrip(";").split())[0:2]
-                    G.add_node(node_num, pos = coords)
-                    children = None
-                    parent = q.get()
-                    if level == parent[1][0] and group_num == parent[1][1]:
-                        G.add_edge(node_num, parent[0], length = distance(G.nodes[node_num]['pos'], G.nodes[parent[0]]['pos']))
-                    else:
-                        print("ERROR: Edge assignment failed: terminal node.")
-                        # return "Edge assignment failed: terminal node."
+                            print("Error: edge assignment failed")
+                        
+                    for child in child_metadata:
+                        q.put(
+                            (node_num, list(map(int, child.strip('[]').split(','))))
+                        )
+
                 node_num += 1
                 group_num += 1
+
     #return "Done!" (used for csv creation)
     return G
 
+
+# G = make_graph('/Users/kianfaizi/projects/ariadne/color-final_plantA_day1.txt')
 
 def make_graph_alt(target):
     '''Construct a broken graph (without problematic edges).'''
@@ -149,45 +172,209 @@ def save_plot(path, name, title):
 
 # save_plot('/Users/kianfaizi/projects/test-roots/BUGS/graph breaking and str/A/1_20200205-215035_009_plantA_day8.txt', 'test.jpg', 'test')
 
-def show_skel(target):
-    '''Plot a nx graph/skel from a .txt file.'''
-    G = make_graph(target)
-    layout = {} # dict of nodes:positions
-    for i in G.nodes.data():
-        node = i[0]
-        pos = i[1]['pos']
-        layout[node] = pos 
-    nx.draw_networkx(G, pos=layout)
+
+
+
+# def pickle_test(target):
+#     with open(target, 'rb') as h:
+#         data = pickle.load(h)
+#         print(data)
+#         print(data.nodes)
+#         print(data.edges)
+
+# show_skel('/Users/kianfaizi/projects/ariadne/color-final_plantB_day1.txt')
+# pickle_test('/Users/kianfaizi/projects/ariadne/color-final_plantE_day1.txt')
+
+def calc_len_PR(G, root_node):
+    '''For a given graph and the uppermost node, calculate the PR length.'''
+    bfs_paths = dict(nx.bfs_successors(G, root_node))
+
+    PRs = [] # list of PR nodes in order of increasing depth
+
+    for node, children in bfs_paths.items():
+        if G.nodes[node]['LR_index'] is None:
+            PRs.append(node)
+            for child in children:
+                if G.nodes[child]['LR_index'] is None:
+                    # catch the last node in the PR, which won't appear in the iterator since it has no children
+                    final = child
+    
+    PRs.append(final)
+
+    # calculate pairwise Euclidean distances and sum
+    return calc_root_len(G, PRs)
+
+
+def calc_root_len(G, nodes):
+    '''Return the pairwise Euclidean distance along a list of consecutive nodes.'''
+    dist = 0
+
+    # order matters! assumes consecutive, increasing depth
+    for prev, curr in zip(nodes, nodes[1:]):
+        segment = distance(G.nodes[prev]['pos'], G.nodes[curr]['pos'])
+        dist += segment
+        # might as well annotate the edges while I'm here
+        G.edges[prev, curr]['weight'] = segment
+
+    return dist
+
+
+def calc_len_LRs(G):
+    '''Find the total length of each LR type in the graph.'''
+    # G = nx.DiGraph()
+    # G.add_edges_from([(1, 2), (2, 3)])
+    # G.add_edges_from([(2, 4)])
+    # G.add_edges_from([(2, 5)])
+    # G.add_edges_from([(5, 6)])
+    # G.nodes[1]['LR_index'] = None
+    # G.nodes[2]['LR_index'] = None
+    # G.nodes[3]['LR_index'] = None
+    # G.nodes[4]['LR_index'] = 0
+    # G.nodes[5]['LR_index'] = 1
+    # G.nodes[6]['LR_index'] = 1
+    
+    # dict of node ids : LR index, for each LR node
+    idxs = nx.get_node_attributes(G, 'LR_index')
+    idxs = {k:v for k,v in idxs.items() if v is not None} # drop empty (PR) nodes
+
+    num_LRs = max(idxs.values()) + 1
+
+    results = {}
+
+    for i in range(num_LRs):
+        # gather nodes corresponding to the current LR index
+        selected = []
+
+        for node in G.nodes(data='LR_index'):
+            if node[1] == i:
+                selected.append(node[0])
+                # make note of the root degree (should be the same for all nodes in loop)
+                current_degree = G.nodes[node[0]]['root_deg']
+        
+        # to find the shallowest node in LR, we iterate through them
+        # until we find the one whose parent has a lesser root degree
+        sub = G.subgraph(selected)
+        for node in sub.nodes():
+            parent = list(G.predecessors(node))
+            assert len(parent) == 1
+            parent = parent[0]
+            if G.nodes[parent]['root_deg'] < current_degree:
+                sub_top = node
+
+        # now we can DFS to order all nodes by increasing depth
+        ordered = list(nx.dfs_tree(sub, sub_top).nodes())
+
+        # also include the parent of the shallowest node in the LR
+        parent = list(G.predecessors(ordered[0]))
+
+        assert len(parent) == 1
+
+        nodes_list = parent + ordered
+        # print(f'The ordered list of nodes that make up LR #{i} is:', nodes_list)
+        results[i] = calc_root_len(G, nodes_list)
+
+    assert num_LRs == len(results)
+    return results
+    # add LR_index awareness: all, 1 deg, 2 deg, n deg
+
+
+def calc_density_LRs(G):
+    pass    
+    # add up to _n_ degrees
+
+
+def plot_all(front, actual, randoms):
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    # ax.set_title(title)
+    ax.set_xlabel("Total length", fontsize=15)
+    ax.set_ylabel("Travel distance", fontsize=15)
+
+    plt.plot([x[0] for x in front.values()], [x[1] for x in front.values()], marker='s', linestyle='-', markeredgecolor='black')
+    plt.plot(actual[0], actual[1], marker='x', markersize=12)
+    for i in randoms:
+        plt.plot(i[0], i[1], marker='+', color='green', markersize=4)
+
+    # plt.savefig(name, bbox_inches='tight', dpi=300)
     plt.show()
 
-show_skel('/Users/kianfaizi/projects/test-roots/BUGS/graph breaking and str/A/1_20200205-215035_009_plantA_day12.txt')
+
+def distance_from_front(front, actual_tree):
+    '''
+    Return the closest alpha for the actual tree, and its distance to the front.
+
+    actual_tree is just (mactual, sactual)
+    front is a dict of form {alpha : [mcost, scost]}
+    '''
+
+    # for each alpha value, find distance to the actual tree
+    distances = {}
+
+    for alpha in front.items():
+        alpha_value = alpha[0]
+        alpha_tree = alpha[1]
+
+        material_ratio = actual_tree[0]/alpha_tree[0]
+        transport_ratio = actual_tree[1]/alpha_tree[1]
+
+        distances[alpha_value] = max(material_ratio,transport_ratio)
+
+    closest = min(distances.items(), key=lambda x:x[1])
+
+    characteristic_alpha, scaling_distance = closest
+
+    return characteristic_alpha, scaling_distance
 
 
-def analyze(target):
+
+def analyze(G):
     '''Report basic root metrics for a given graph.'''
-    G = make_graph(target)
-    mcosts, scosts, actual = pareto_front(G)
-    # total len
-    print("Total length (material cost) of roots: ", mcosts)
-    # transport cost
-    print("Wiring/transport cost of roots: ", scosts)
+    # check that graph is indeed a tree (acyclic, undirected, connected)
+    assert nx.is_tree(G)
+
+    # print(G.nodes(data=True))
+
+    # find top ("root") node
+    for node in G.nodes(data='pos'):
+        # for some reason, this returns pos coords as a list and not a tuple. Didn't I save them as a tuple?
+        if node[1] == [0,0]:
+            root_node = node[0]
+    # the pareto functions are hardcoded to assume node 0 is the top.
+    # (i can always go back and modify them to accept root_node as an arg)
+    # I think this should always be true, but maybe there's an edge case I'm not considering (undos, etc).
+    assert root_node == 0
+
     # PR len
-    # the path from node 0 to a critical node which has the most nodes of degree >2 along it (most branching points)
-    # examine graph_costs calculations for help
+    len_PR = calc_len_PR(G, root_node)
+    print('PR length is:', len_PR)
 
-    # LR len
+    # LR len/number
+    lens_LRs = calc_len_LRs(G)
+    num_LRs = len(lens_LRs)
+    print('LR lengths are:', lens_LRs)
 
-    # LR density + number
-    # find all nodes of degree >2 (branching points)
-    # map which are on PR (primary LRs) and so on
+    # LR density
+    # primary LR density
+    print('LR density is:', len_PR/num_LRs)
 
-    # LR angles
-    # how is it calculated? (relative to upper PR or lower PR?)
-    # for each relevant branching point
+    front, actual = pareto_front(G)
+    mactual, sactual = actual
+    randoms = random_tree(G)
+
+    # distance of each plant to pareto front, and representative alpha
+    # W* = total len of Steiner
+    # D* = transport cost of Satellite
+    characteristic_alpha, scaling_distance = distance_from_front(front, actual)
+    print('Characteristic alpha is:', characteristic_alpha)
+    print('Distance to front is:', scaling_distance)
+
+    # plot stuff
+    plot_all(front, actual, randoms)
+
+
 
     # think about dynamics/time-series
-
-    # distance of each plant to pareto front
 
     # distance of center-of-mass of randoms to the pareto front
 

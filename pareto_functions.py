@@ -29,8 +29,8 @@ def graph_costs(G, critical_nodes=None):
 
     # dictionary that stores each node's distance to the root
     droot = {}
-    # this method assumes node 1 is the root
-    root = 1
+    # this method assumes node 0 is the root
+    root = 0
     # node 1 has distance 0 from the root
     droot[root] = 0
 
@@ -61,7 +61,7 @@ def graph_costs(G, critical_nodes=None):
         for child in G.neighbors(curr):
             # ignore curr's parent, this was already visited in the bfs
             if child != parent[curr]:
-                length = G[curr][child]['length']
+                length = G[curr][child]['weight']
                 mcosts.append(length)
 
                 # to get to the root, the child must go to curr and then to the root
@@ -205,8 +205,8 @@ def satellite_tree(G):
     to the root by a direct line
     '''
 
-    # assume the root is node 1
-    root = 1
+    # assume the root is node 0
+    root = 0
 
     H = nx.Graph()
 
@@ -228,7 +228,7 @@ def satellite_tree(G):
             continue
         H.add_edge(root, u)
         H.nodes[u]['pos'] = G.nodes[u]['pos']
-        H[root][u]['length'] = node_dist(G, root, u)
+        H[root][u]['weight'] = node_dist(G, root, u)
 
     return H
 
@@ -249,8 +249,8 @@ def pareto_steiner_fast(G, alpha):
     '''
     assert 0 <= alpha <= 1
 
-    # assume the root is node  1
-    root = 1
+    # assume the root is node 0
+    root = 0
 
     H = nx.Graph()
 
@@ -423,7 +423,7 @@ def pareto_steiner_fast(G, alpha):
             n1 = line_nodes[i]
             n2 = line_nodes[i - 1]
             H.add_edge(n1, n2)
-            H[n1][n2]['length'] = node_dist(H, n1, n2)
+            H[n1][n2]['weight'] = node_dist(H, n1, n2)
             assert 'droot' in H.nodes[n1]
             H.nodes[n2]['droot'] = node_dist(H, n2, u) + H.nodes[u]['droot']
 
@@ -437,8 +437,6 @@ def pareto_front(G):
     This allows to compare how G was connected and how G could have been connected had it
     been trying to optimize wiring cost and conduction delay
     '''
-    mcosts = []
-    scosts = []
 
     # critical nodes are the main root base and the lateral root tips
     critical_nodes = []
@@ -449,6 +447,9 @@ def pareto_front(G):
     # test: compute the actual mcost, scost for the original plant
     mactual, sactual = graph_costs(G, critical_nodes=critical_nodes)
     actual = (mactual, sactual)
+
+    # dictionary of mcosts, scosts for each alpha value on the front
+    front = {}
 
     for alpha in DEFAULT_ALPHAS:
         H = None
@@ -461,10 +462,9 @@ def pareto_front(G):
         # compute the wiring cost and conduction delay
         # only the original critical nodes contribute to conduction delay
         mcost, scost = graph_costs(H, critical_nodes=critical_nodes)
-        mcosts.append(mcost)
-        scosts.append(scost)
+        front[alpha] = [mcost, scost]
 
-    return mcosts, scosts, actual
+    return front, actual 
 
 def random_tree(G):
     '''
@@ -477,12 +477,13 @@ def random_tree(G):
 
     # full list of nodes of G, with info
     all_nodes = list(G.nodes.data())
+    # TODO: this is stupid, just store index and access node data from G as needed. Fix later VVVV
 
     # get critical nodes of G
     G_critical_nodes = []
     for i in G.nodes():
-        if i == 1 or G.degree(i) == 1: # assumes root node is always first
-            G_critical_nodes.append(all_nodes[i-1])
+        if i == 0 or G.degree(i) == 1: # assumes root node is 0
+            G_critical_nodes.append(all_nodes[i])
 
     for i in range(1000): # 1000 random trees
         # copy list of critical nodes for manipulation
@@ -500,7 +501,7 @@ def random_tree(G):
                 r_index = random.randrange(len(R.nodes)) # get a random node from R
                 r = list(R.nodes)[r_index]
                 R.add_node(g[0], pos=g[1]['pos'])
-                R.add_edge(r, g[0], length=node_dist(R, r, g[0]))
+                R.add_edge(r, g[0], weight=node_dist(R, r, g[0]))
             else: # if R is empty
                 # add the new point
                 R.add_node(g[0], pos=g[1]['pos'])

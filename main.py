@@ -8,12 +8,20 @@ Copyright 2020-2021 Kian Faizi.
 TODO:
 try:except for dialog errors?
 easier selection of nearby points
+undo button clears edges
 '''
 
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk, ImageSequence
 import quantify
+import networkx as nx
+from networkx.readwrite import json_graph
+import json
+
+import numpy as np
+
+import matplotlib.pyplot as plt
 
 import time
 
@@ -705,7 +713,6 @@ class Tree:
 
         base.wait_window(top) # wait for a button to be pressed; check this still works ##
 
-
     def make_file(self, event):
         '''Output tree data to file.'''
         if self.plant is None: # get plant ID when called for the first time
@@ -715,51 +722,38 @@ class Tree:
 
         self.index_LRs()
 
-        # sort all nodes by ascending LR index, with PR (LR_index = None) last
-        # this works because False < True, and tuples are sorted element-wise
-        ordered_tree = sorted(self.nodes, key=lambda node: (node.LR_index is None, node.LR_index))
-
-        # then sort by depth
-        ordered_tree = sorted(ordered_tree, key=lambda node: node.depth)
+        # sort all nodes by depth
+        # ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
+        # then sort by ascending LR index, with PR last
+        # ordered_tree = sorted(ordered_tree, key=lambda node: (node.LR_index is None, node.LR_index))
 
         # prepare output file
         source = Path(self.path.replace(" ","")).stem  # input name, no spaces
-        output_name = f"{source}_plant{self.plant}_day{self.day}.txt"
+        output_name = f"{source}_plant{self.plant}_day{self.day}.json"
         repo_path = Path("./").resolve()
-        output_path = repo_path.parent / output_name
+        output_path = repo_path / output_name
 
-        with open(output_path, "a") as h:
+        # convert Tree to NX graph
+        DG = nx.DiGraph()            
+        
+        # make ebunches (2-tuples of adjacent nodes)
+        ebunches = []
+        for node in self.nodes:
 
-            tracker = 0  # track depth changes to output correct level
-            kidcount = 0
-            h.write(f"## Level: 0")
-            h.write("\n")
+            # add nodes w/ positions and LR indices
+            DG.add_node(node.relcoords, pos=node.relcoords, LR_index=node.LR_index, root_deg=node.root_degree)
 
-            for i in range(len(ordered_tree)):
-                curr = ordered_tree[i]
+            for child in node.children:
+                ebunches.append((node.relcoords, child.relcoords))
 
-                if tracker != curr.depth:
-                    h.write(f"## Level: {curr.depth}")
-                    h.write("\n")
-                    tracker = curr.depth
-                    kidcount = 0
+        DG.add_edges_from(ebunches)
+        DG = nx.convert_node_labels_to_integers(DG)
 
-                h.write(f"{curr.relcoords[0]} {curr.relcoords[1]} 0;".rstrip("\n"))
+        s = json_graph.adjacency_data(DG)
 
-                # arbitrarily, we assign LR indices left-to-right
-                # sort by x-coordinate
-                curr_children = sorted(curr.children, key=lambda x: x.relcoords[0])
+        with open(output_path, mode='w') as h:
+            json.dump(s, h)
 
-                for kid in curr_children:
-                    h.write(f" [{kid.depth},{kidcount}]".rstrip("\n"))
-                    kidcount += 1
-
-                if curr.root_degree == 0:
-                    h.write(f" (PR, {curr.LR_index})".rstrip("\n"))
-                elif curr.root_degree > 0:
-                    h.write(f" ({curr.root_degree}LR, {curr.LR_index})".rstrip("\n"))
-
-                h.write("\n")
 
 
 class AnalyzerUI(tk.Frame):
@@ -778,7 +772,7 @@ class AnalyzerUI(tk.Frame):
         self.left_frame = tk.Frame(self.frame)
         self.left_frame.pack(side='left', fill='both', expand=True)
 
-        self.load_button = tk.Button(self.left_frame, text='Load .txt file', command=self.import_txt)
+        self.load_button = tk.Button(self.left_frame, text='Load tree file', command=self.import_file)
         self.load_button.pack(side='top', fill='both', expand=True)
 
         # these buttons are hidden until later
@@ -795,24 +789,52 @@ class AnalyzerUI(tk.Frame):
 
         # integrate functions from quantify.py
 
-    def import_txt(self):
+    def import_file(self):
         '''Query user for an input file and load it into memory.'''
-        self.path = askopenfilename(parent=self.base, initialdir='./', title='Select a .txt file:')
-        self.results = quantify.make_graph(self.path)
-        
-        # listen for graph-creation errors and handle them if they arise
-        # ...
+        self.file = askopenfilename(parent=self.base, initialdir='./', title='Select a file:')
+
+        with open(self.file, mode='r') as h:
+            data = json.load(h)
+            self.graph = json_graph.adjacency_graph(data)
 
         # spawn relevant buttons
         self.clear_button.pack(side='top', fill='both', expand=True)
         self.analyze_button.pack(side='top', fill='both', expand=True)
 
         # display output on right
-        self.output.config(text=f'{self.results}')
+        layout = {} # dict of node positions
+        for i in self.graph.nodes:
+            (x,y) = self.graph.nodes[i]['pos']
+            layout[i] = (x,-y)
+
+        graph_name = self.file.split("/")[-1]
+        path_base = self.file[:-5] # remove '.json'
+
+        plot_path = path_base + '_plot.png'
+
+        nx.draw_networkx(self.graph, pos=layout)
+        plt.savefig(plot_path)
+
+        self.plot = ImageTk.PhotoImage(Image.open(plot_path))
+
+        self.output.config(text=graph_name, image=self.plot)
+
+        quantify.analyze(self.graph)
+
 
     def generate_report(self):
         '''Compute RSA metrics and evaluate Pareto optimality.'''
         self.save_button.pack(side='top', fill='both', expand=True)
+        
+        
+
+
+
+
+        path_base = self.file[:-5] # remove '.json'
+        pareto_path = path_base + '_pareto.png'
+
+
 
     def clear(self):
         '''Clean up a previously imported file.'''
@@ -823,6 +845,12 @@ class AnalyzerUI(tk.Frame):
         '''Save an image of the Pareto plot.'''
         pass
 
+
+
+        # self.path = askopenfilename(parent=self.base, initialdir='./', title='Select an image file:')
+        # self.title_label.config(text=f'Tracing {self.path}')
+        # self.file = Image.open(self.path)
+        # self.img = ImageTk.PhotoImage(self.file)
 
 
 
