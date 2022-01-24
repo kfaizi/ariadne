@@ -9,6 +9,7 @@ TODO:
 try:except for dialog errors?
 easier selection of nearby points
 undo button clears edges
+- UNDO BUTTON IS CURRENTLY BORKED!
 '''
 
 import tkinter as tk
@@ -22,8 +23,6 @@ import json
 import numpy as np
 
 import matplotlib.pyplot as plt
-
-import time
 
 from pathlib import Path
 from queue import Queue

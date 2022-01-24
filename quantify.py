@@ -256,31 +256,58 @@ def calc_len_LRs(G):
         sub = G.subgraph(selected)
         for node in sub.nodes():
             parent = list(G.predecessors(node))
-            assert len(parent) == 1
-            parent = parent[0]
-            if G.nodes[parent]['root_deg'] < current_degree:
+            assert len(parent) == 1 # should be a tree
+            if G.nodes[parent[0]]['root_deg'] < current_degree:
                 sub_top = node
 
         # now we can DFS to order all nodes by increasing depth
         ordered = list(nx.dfs_tree(sub, sub_top).nodes())
 
-        # also include the parent of the shallowest node in the LR
+        # also include the parent of the shallowest node in the LR (the 'branch point')
         parent = list(G.predecessors(ordered[0]))
-
         assert len(parent) == 1
+
+        # and while we're here, grab the branch pt's parent too
+        branch_parent = list(G.predecessors(parent[0]))
+        assert len(branch_parent) == 1
+
+        # now we can calculate the gravitropic set point angle
+        ######
+        # branch parent coordinates
+        p1 = np.array(G.nodes[branch_parent[0]]['pos'])
+        # branch coordinates
+        p2 = np.array(G.nodes[parent[0]]['pos'])
+        # LR coordinates
+        p3 = np.array(G.nodes[ordered[0]]['pos'])
+
+        # recall: in our coordinate system, the top node is (0,0)
+        # x increases to the right; y increases downwards
+        # unit vector of gravity
+        g = np.array([0,1])
+        # normalized vector of LR emergence
+        lr = p3 - p2
+        norm_lr = np.linalg.norm(lr)
+        assert norm_lr > 0
+        lr = lr/norm_lr
+
+        # angle between LR emergence and the vector of gravity:
+        # this will be symmetric, whichever side of the PR the LR is on
+        theta = np.rad2deg(math.acos(np.dot(lr,g)))
 
         nodes_list = parent + ordered
         # print(f'The ordered list of nodes that make up LR #{i} is:', nodes_list)
-        results[i] = calc_root_len(G, nodes_list)
+        results[i] = [calc_root_len(G, nodes_list), theta]
 
     assert num_LRs == len(results)
     return results
     # add LR_index awareness: all, 1 deg, 2 deg, n deg
 
 
+
 def calc_density_LRs(G):
     pass    
     # add up to _n_ degrees
+
 
 
 def plot_all(front, actual, randoms):
@@ -350,13 +377,26 @@ def analyze(G):
     print('PR length is:', len_PR)
 
     # LR len/number
-    lens_LRs = calc_len_LRs(G)
-    num_LRs = len(lens_LRs)
+    LR_info = calc_len_LRs(G)
+    num_LRs = len(LR_info)
+    lens_LRs = [x[0] for x in LR_info.values()]
+    angles_LRs = [x[1] for x in LR_info.values()]
+
     print('LR lengths are:', lens_LRs)
+    print('Set point angles are:', angles_LRs)
 
     # LR density
     # primary LR density
     print('LR density is:', len_PR/num_LRs)
+
+    # gravitropic set point angles
+
+
+    # add secondary LR density
+
+    # add total root length.
+    # assert that the sum of PR and LR lengths == mactual, for sanity
+
 
     front, actual = pareto_front(G)
     mactual, sactual = actual
