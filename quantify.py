@@ -310,21 +310,20 @@ def calc_density_LRs(G):
 
 
 
-def plot_all(front, actual, randoms):
-
+def plot_all(front, actual, randoms, dest):
     fig = plt.figure()
     ax = fig.add_subplot(111)
     # ax.set_title(title)
-    ax.set_xlabel("Total length", fontsize=15)
-    ax.set_ylabel("Travel distance", fontsize=15)
+    ax.set_xlabel("Total length (px)", fontsize=15)
+    ax.set_ylabel("Travel distance (px)", fontsize=15)
 
     plt.plot([x[0] for x in front.values()], [x[1] for x in front.values()], marker='s', linestyle='-', markeredgecolor='black')
     plt.plot(actual[0], actual[1], marker='x', markersize=12)
     for i in randoms:
         plt.plot(i[0], i[1], marker='+', color='green', markersize=4)
 
-    # plt.savefig(name, bbox_inches='tight', dpi=300)
-    plt.show()
+    plt.savefig(dest, bbox_inches='tight', dpi=300)
+    # plt.show()
 
 
 def distance_from_front(front, actual_tree):
@@ -374,29 +373,19 @@ def analyze(G):
 
     # PR len
     len_PR = calc_len_PR(G, root_node)
-    print('PR length is:', len_PR)
+    # print('PR length is:', len_PR)
 
     # LR len/number
     LR_info = calc_len_LRs(G)
     num_LRs = len(LR_info)
     lens_LRs = [x[0] for x in LR_info.values()]
     angles_LRs = [x[1] for x in LR_info.values()]
+    # print('LR lengths are:', lens_LRs)
+    # print('Set point angles are:', angles_LRs)
 
-    print('LR lengths are:', lens_LRs)
-    print('Set point angles are:', angles_LRs)
-
-    # LR density
     # primary LR density
-    print('LR density is:', len_PR/num_LRs)
-
-    # gravitropic set point angles
-
-
-    # add secondary LR density
-
-    # add total root length.
-    # assert that the sum of PR and LR lengths == mactual, for sanity
-
+    density_LRs = len_PR/num_LRs
+    # print('LR density is:', len_PR/num_LRs)
 
     front, actual = pareto_front(G)
     mactual, sactual = actual
@@ -406,16 +395,16 @@ def analyze(G):
     # W* = total len of Steiner
     # D* = transport cost of Satellite
     characteristic_alpha, scaling_distance = distance_from_front(front, actual)
-    print('Characteristic alpha is:', characteristic_alpha)
-    print('Distance to front is:', scaling_distance)
+    # print('Characteristic alpha is:', characteristic_alpha)
+    # print('Distance to front is:', scaling_distance)
 
-    # plot stuff
-    plot_all(front, actual, randoms)
+    results = [len_PR, num_LRs, lens_LRs, angles_LRs, density_LRs, mactual, sactual, characteristic_alpha, scaling_distance]
 
-
+    return results, front, actual, randoms
 
     # think about dynamics/time-series
-
     # distance of center-of-mass of randoms to the pareto front
-
     # literally purchase a nice mouse for matt
+    # add secondary LR density
+    # add total root length.
+    # assert that the sum of PR and LR lengths == mactual, for sanity

@@ -6,14 +6,13 @@ A GUI for segmenting root images from Arabidopsis seedlings grown on agar plates
 Copyright 2020-2021 Kian Faizi.
 
 TODO:
+if imported file is not a GIF, block next/prev buttons
 try:except for dialog errors?
 easier selection of nearby points
-undo button clears edges
-- UNDO BUTTON IS CURRENTLY BORKED!
 '''
 
 import tkinter as tk
-from tkinter.filedialog import askopenfilename
+from tkinter import filedialog
 from PIL import Image, ImageTk, ImageSequence
 import quantify
 import networkx as nx
@@ -28,6 +27,8 @@ from pathlib import Path
 from queue import Queue
 from collections import deque
 import copy
+from datetime import datetime
+import csv
 
 # TODO: TEST HISTORY DEQUE ACCURACY
 
@@ -46,7 +47,7 @@ class StartupUI:
         self.title_frame = tk.Frame(self.frame)
         self.title_frame.pack()
 
-        self.title_label = tk.Label(self.frame, text='Welcome to Ariadne')
+        self.title_label = tk.Label(self.frame, text='Welcome to Ariadne!')
         self.title_label.pack(side='top', fill='both', expand=True)
 
         # buttons
@@ -80,20 +81,34 @@ class TracerUI(tk.Frame):
         self.frame = tk.Frame(self.base)
         self.frame.pack(side='top', fill='both', expand=True)
 
-        # left-hand menu
-        self.menu = tk.Frame(self.frame, width=175, bg='green')
-        self.menu.pack(side='top', fill='both', expand=True)
-
-        self.test_button = tk.Button(self.menu, text='Import image file', command=self.import_image)
-        self.test_button.pack()
-
         # filename titlebar
         self.title_frame = tk.Frame(self.frame)
-        self.title_label = tk.Label(self.title_frame, text=f'Tracing')
+        self.title_label = tk.Label(self.title_frame, text='Tracing')
         self.title_label.pack()
+
+        # left-hand menu
+        self.menu = tk.Frame(self.frame, width=175,bg='skyblue')
+        self.menu.pack(side='top', fill='both')
+
+        self.button_import = tk.Button(self.menu, text='Import image file', command=self.import_image)
+        self.button_next = tk.Button(self.menu, text='Next day', command=None, state='disabled')
+        self.button_prev = tk.Button(self.menu, text='Prev day', command=None, state='disabled')
+        self.button_override = tk.Button(self.menu, text='Override', command=None, state='disabled')
+        self.button_insert = tk.Button(self.menu, text='Insert', command=None, state='disabled')
+        self.button_undo = tk.Button(self.menu, text='Undo', command=None, state='disabled')
+        self.button_save = tk.Button(self.menu, text='Save', command=None, state='disabled')
+
+        self.button_import.pack(fill='x', side='top')
+        self.button_prev.pack(fill='x', side='top')
+        self.button_next.pack(fill='x', side='top')
+        self.button_override.pack(fill='x', side='top')
+        self.button_insert.pack(fill='x', side='top')
+        self.button_undo.pack(fill='x', side='top')
+        self.button_save.pack(fill='x', side='top')
 
         # image canvas
         self.canvas = tk.Canvas(self.frame, width=600, height=700, bg='gray')
+        self.img = None
 
         # useful flags
         self.prox_override = False # tracks whether proximity override is on
@@ -157,7 +172,7 @@ class TracerUI(tk.Frame):
         self.canvas.bind('<Button 2>', self.click_info)
 
         # place widgets using grid
-        self.menu.grid(row=0, column=0, rowspan=4, sticky='news')
+        self.menu.grid(row=1, column=0, rowspan=3, sticky='news')
         self.title_frame.grid(row=0, column=1, columnspan=2, sticky='ew')
         self.canvas.grid(row=1, column=1, sticky='news')
         self.statusbar_frame.grid(row=3, column=1, columnspan=2, sticky='ew')
@@ -194,7 +209,7 @@ class TracerUI(tk.Frame):
     def import_image(self):
         '''Query user for an input file and load it onto the canvas.'''
         ## think about what happens if this is called multiple times in a session!
-        self.path = askopenfilename(parent=self.base, initialdir='./', title='Select an image file:')
+        self.path = tk.filedialog.askopenfilename(parent=self.base, initialdir='./', title='Select an image file:')
         self.title_label.config(text=f'Tracing {self.path}')
         self.file = Image.open(self.path)
         self.img = ImageTk.PhotoImage(self.file)
@@ -211,10 +226,20 @@ class TracerUI(tk.Frame):
     def change_frame(self, next_index):
         '''Move frames in the GIF.'''
         try:
+            # get next frame from GIF
             new_frame = self.iterframes[next_index]
+
+            # delete current canvas image
+            self.canvas.delete(self.frame_id)
+
+            # add the new image
             self.img = ImageTk.PhotoImage(new_frame)
             self.frame_id = self.canvas.create_image(0, 0, image=self.img, anchor='nw')
 
+            # lower it into the background
+            self.canvas.tag_lower(self.frame_id)
+
+            # adjust index and menubar
             self.frame_index = next_index
             self.day_indicator = f'Frame #{self.frame_index+1}'
 
@@ -771,87 +796,83 @@ class AnalyzerUI(tk.Frame):
         self.left_frame = tk.Frame(self.frame)
         self.left_frame.pack(side='left', fill='both', expand=True)
 
-        self.load_button = tk.Button(self.left_frame, text='Load tree file', command=self.import_file)
-        self.load_button.pack(side='top', fill='both', expand=True)
+        self.load_button = tk.Button(self.left_frame, text='Load file(s)', command=self.import_file)
+        self.load_button.pack(side='top', expand=True)
 
         # these buttons are hidden until later
-        self.clear_button = tk.Button(self.left_frame, text='Clear', command=self.clear)
-        self.analyze_button = tk.Button(self.left_frame, text='Generate report', command=self.generate_report)   
-        self.save_button = tk.Button(self.left_frame, text='Save image', command=self.save_report)
-
+        # self.analyze_button = tk.Button(self.left_frame, text='Generate report', command=self.generate_report)
+        # self.clear_button = tk.Button(self.left_frame, text='Clear', command=self.clear)
+ 
         # right-hand output
         self.right_frame = tk.Frame(self.frame)
         self.right_frame.pack(side='right', fill='both', expand=True)
 
-        self.output = tk.Label(self.right_frame, text=f'Results go here!')
+        self.output_info = 'Current files:'
+        self.output = tk.Label(self.right_frame, text=self.output_info)
         self.output.pack(side='top', fill='both', expand=True)
-
-        # integrate functions from quantify.py
-
+        
     def import_file(self):
-        '''Query user for an input file and load it into memory.'''
-        self.file = askopenfilename(parent=self.base, initialdir='./', title='Select a file:')
+        '''Load input files.'''
+        self.tree_paths = tk.filedialog.askopenfilenames(parent=self.base, initialdir='./', title='Select files to analyze:')
 
-        with open(self.file, mode='r') as h:
-            data = json.load(h)
-            self.graph = json_graph.adjacency_graph(data)
+        if len(self.tree_paths) == 0: # no selection made
+            return
+        else:
+            self.output_path = Path(tk.filedialog.askdirectory(parent=self.base, initialdir='./', title='Select an output folder:'))
+            
+            # create a csv to store analysis results
+            timestamp = datetime.now()
+            report_dest = self.output_path / f"report_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
+            header = ['filename', 'PR length', 'number of LRs', 'LR lengths', 'LR set point angles', 'primary LR density', 'material cost (total root length)', 'wiring cost', 'characteristic alpha', 'scaling distance to front']
 
-        # spawn relevant buttons
-        self.clear_button.pack(side='top', fill='both', expand=True)
-        self.analyze_button.pack(side='top', fill='both', expand=True)
+            with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(header)
 
-        # display output on right
-        layout = {} # dict of node positions
-        for i in self.graph.nodes:
-            (x,y) = self.graph.nodes[i]['pos']
-            layout[i] = (x,-y)
+            # spawn relevant buttons
+            # self.clear_button.pack(side='top', expand=True)
+            # self.analyze_button.pack(side='top', expand=True)
 
-        graph_name = self.file.split("/")[-1]
-        path_base = self.file[:-5] # remove '.json'
+            # add current file count
+            self.output_info = f'Current files: ({len(self.tree_paths)})'
+            i = 1
 
-        plot_path = path_base + '_plot.png'
+            for file in self.tree_paths:
+                graph_name = file.split("/")[-1]
+                pareto_name = graph_name[:-5] + '_pareto.png'
+                plot_name = graph_name[:-5] + '_tree.png'
+                pareto_path = self.output_path / pareto_name 
 
-        nx.draw_networkx(self.graph, pos=layout)
-        plt.savefig(plot_path)
+                # update current file count list
+                self.output_info = self.output_info + '\n' + graph_name
+                self.output.config(text=self.output_info)
 
-        self.plot = ImageTk.PhotoImage(Image.open(plot_path))
+                with open(file, mode='r') as h:
+                    data = json.load(h)
+                    graph = json_graph.adjacency_graph(data)
 
-        self.output.config(text=graph_name, image=self.plot)
+                    # perform analysis
+                    report, front, actual, randoms = quantify.analyze(graph)
+                    report = [graph_name[:-5]] + report
 
-        quantify.analyze(self.graph)
+                    with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow(report)
+                        
+                    # make pareto plot and save
+                    quantify.plot_all(front, actual, randoms, pareto_path)
 
+                print(f"Processed file {i}/{len(self.tree_paths)}")
+                i += 1
 
-    def generate_report(self):
-        '''Compute RSA metrics and evaluate Pareto optimality.'''
-        self.save_button.pack(side='top', fill='both', expand=True)
-        
-        
-
-
-
-
-        path_base = self.file[:-5] # remove '.json'
-        pareto_path = path_base + '_pareto.png'
-
+            # show confirmation message
+            print('Finished.')
 
 
     def clear(self):
         '''Clean up a previously imported file.'''
         # take care of self.path, self.results, buttons, etc
         pass
-
-    def save_report(self):
-        '''Save an image of the Pareto plot.'''
-        pass
-
-
-
-        # self.path = askopenfilename(parent=self.base, initialdir='./', title='Select an image file:')
-        # self.title_label.config(text=f'Tracing {self.path}')
-        # self.file = Image.open(self.path)
-        # self.img = ImageTk.PhotoImage(self.file)
-
-
 
 
 if __name__ == "__main__":
