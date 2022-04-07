@@ -3,7 +3,7 @@ ARIADNE
 
 A GUI for segmenting root images from Arabidopsis seedlings grown on agar plates. 
 
-Copyright 2020-2021 Kian Faizi.
+@kfaizi on GitHub
 
 TODO:
 if imported file is not a GIF, block next/prev buttons
@@ -91,12 +91,13 @@ class TracerUI(tk.Frame):
         self.menu.pack(side='top', fill='both')
 
         self.button_import = tk.Button(self.menu, text='Import image file', command=self.import_image)
-        self.button_next = tk.Button(self.menu, text='Next day', command=None, state='disabled')
-        self.button_prev = tk.Button(self.menu, text='Prev day', command=None, state='disabled')
-        self.button_override = tk.Button(self.menu, text='Override', command=None, state='disabled')
-        self.button_insert = tk.Button(self.menu, text='Insert', command=None, state='disabled')
-        self.button_undo = tk.Button(self.menu, text='Undo', command=None, state='disabled')
-        self.button_save = tk.Button(self.menu, text='Save', command=None, state='disabled')
+        self.button_next = tk.Button(self.menu, text='Next day (e)', command=None, state='disabled')
+        self.button_prev = tk.Button(self.menu, text='Prev day (q)', command=None, state='disabled')
+        self.button_override = tk.Button(self.menu, text='Override (r)', command=None, state='disabled')
+        self.button_insert = tk.Button(self.menu, text='Insert (i)', command=None, state='disabled')
+        self.button_undo = tk.Button(self.menu, text='Undo (Ctrl-z)', command=None, state='disabled')
+        self.button_save = tk.Button(self.menu, text='Save (g)', command=None, state='disabled')
+        self.button_show = tk.Button(self.menu, text='Show/hide tree (t)', command=None, state='disabled')
 
         self.button_import.pack(fill='x', side='top')
         self.button_prev.pack(fill='x', side='top')
@@ -105,6 +106,7 @@ class TracerUI(tk.Frame):
         self.button_insert.pack(fill='x', side='top')
         self.button_undo.pack(fill='x', side='top')
         self.button_save.pack(fill='x', side='top')
+        self.button_show.pack(fill='x', side='top')
 
         # image canvas
         self.canvas = tk.Canvas(self.frame, width=600, height=700, bg='gray')
@@ -150,26 +152,11 @@ class TracerUI(tk.Frame):
         self.canvas.bind("<Motion>", self.motion_track)
         self.canvas.bind("<KeyRelease>", self.motion_track)
 
-        # keybinds for gif pagination
-        self.canvas.bind('e', self.next_day)
-        self.canvas.bind('q', self.previous_day)
-
-        # history and undo
-        self.history = deque(maxlen=6) # gets updated on every add_node()
-        self.canvas.bind('<Control-z>', self.undo)
-
-        # miscellaneous keybinds
-        self.canvas.bind("<Button 1>", self.place_node)
-        self.canvas.bind('r', self.override)
-        self.canvas.bind('i', self.insert)
-        self.canvas.bind('t', self.show_tree)
-
         # highlighting/insertion tests
         self.highlight_choice = 0 # tracks highlighted root when cycling
-        self.canvas.bind("<Right>", self.cycle_highlights)
-        self.canvas.bind('x', self.EG_highlight_root)
-
-        self.canvas.bind('<Button 2>', self.click_info)
+        # self.canvas.bind("<Right>", self.cycle_highlights)
+        # self.canvas.bind('x', self.EG_highlight_root)
+        # self.canvas.bind('<Button 2>', self.click_info)
 
         # place widgets using grid
         self.menu.grid(row=1, column=0, rowspan=3, sticky='news')
@@ -221,7 +208,33 @@ class TracerUI(tk.Frame):
 
         # current tree
         self.tree = Tree(self.path) # instantiate first tree ## think about clearing/overwriting
-        self.canvas.bind('g', self.tree.make_file) ## check this works
+        
+        self.history = deque(maxlen=6) # gets updated on every add_node()
+
+        # enable buttons and add relevant keybinds
+        self.canvas.bind("<Button 1>", self.place_node)
+        
+        self.button_save.config(command=self.tree.make_file, state='normal')
+        self.canvas.bind('g', self.tree.make_file)
+
+        self.button_next.config(command=self.next_day, state='normal')
+        self.canvas.bind('e', self.next_day)
+
+        self.button_prev.config(command=self.previous_day, state='normal')    
+        self.canvas.bind('q', self.previous_day)
+
+        self.button_undo.config(command=self.undo, state='normal')
+        self.canvas.bind('<Control-z>', self.undo)
+
+        self.button_override.config(command=self.override, state='normal')
+        self.canvas.bind('r', self.override)
+
+        self.button_insert.config(command=self.insert, state='normal')
+        self.canvas.bind('i', self.insert)
+
+        self.button_show.config(command=self.show_tree, state='normal')
+        self.canvas.bind('t', self.show_tree)
+
 
     def change_frame(self, next_index):
         '''Move frames in the GIF.'''
@@ -249,11 +262,11 @@ class TracerUI(tk.Frame):
         except IndexError:
             self.day_indicator = 'End of GIF'
 
-    def next_day(self, event):
+    def next_day(self, event=None):
         '''Show the next frame in the GIF.'''
         self.change_frame(self.frame_index+1)
 
-    def previous_day(self, event):
+    def previous_day(self, event=None):
         '''Show the previous frame in the GIF.'''
         self.change_frame(self.frame_index-1)
 
@@ -297,7 +310,7 @@ class TracerUI(tk.Frame):
             self.redraw() # update edges following add_node() above
             for n in self.tree.nodes:  # deselect all other points
                 n.deselect()
-            self.insert(event)  # turn off insertion mode after placing new point
+            self.insert()  # turn off insertion mode after placing new point
         else:
             for n in self.tree.nodes:
                 if n.is_selected:
@@ -312,22 +325,24 @@ class TracerUI(tk.Frame):
 
         # turn off override mode after placing new point
         if self.prox_override:
-            self.override(event)
+            self.override()
 
         # reset insertion tracking
         self.tree.root_choice = None
         self.highlight_choice = 0
 
-    def override(self, event):
+    def override(self, event=None):
         '''Override proximity limit on node placement.'''
         if self.prox_override:
             self.prox_override = False
             self.override_indicator = ''
+            self.button_override.config(state='normal')
         else:
             self.prox_override = True
             self.override_indicator = 'override=ON'
+            self.button_override.config(state='active')
 
-    def insert(self, event):
+    def insert(self, event=None):
         '''Insert a new middle node between 2 existing nodes.'''
         ## TODO comment this function better. also check this, but:
         # 1) select the parent for new node
@@ -336,8 +351,9 @@ class TracerUI(tk.Frame):
         if self.inserting: # turn off insertion mode
             self.inserting = False
             self.inserting_indicator = ''
+            self.button_insert.config(state='normal')
             if self.prox_override: # turn off override too
-                self.override(event)
+                self.override()
 
             # remove any leftover highlights
             to_clear = set()
@@ -362,10 +378,11 @@ class TracerUI(tk.Frame):
             # turn on insertion mode    
             self.inserting = True
             self.inserting_indicator = 'inserting=ON'
+            self.button_insert.config(state='active')
             
             # turn on override too
             if not self.prox_override:
-                self.override(event)
+                self.override()
     
     def draw_edge(self, parent, child):
         '''Draw an edge between 2 nodes, and add it to the tree.'''
@@ -407,7 +424,7 @@ class TracerUI(tk.Frame):
         self.colors += 1
         return palette[pos] # next color
 
-    def undo(self, event):
+    def undo(self, event=None):
         '''Undo the last graph-altering action.'''
         ## comment this better
         try:
@@ -447,7 +464,7 @@ class TracerUI(tk.Frame):
                 x = self.canvas.create_line(m.coords[0], m.coords[1], n.coords[0], n.coords[1], fill=m.pedge_color, state=f'{self.tree_flag}')
                 self.tree.edges.append(x)
 
-    def show_tree(self, event):
+    def show_tree(self, event=None):
         '''Toggle visibility of tree edges.'''
         if self.tree.is_shown is False:
             self.tree_flag = 'normal'
@@ -502,7 +519,7 @@ class TracerUI(tk.Frame):
                 i.is_highlighted = False
 
 
-    def cycle_highlights(self, event):
+    def cycle_highlights(self, event=None):
         '''Cycle thru children of a branch point (for insertion mode).'''
         if self.inserting:
             for n in self.tree.nodes:
@@ -529,7 +546,7 @@ class TracerUI(tk.Frame):
 
 
 
-    def EG_highlight_root(self, event):
+    def EG_highlight_root(self, event=None):
         # if the node belongs to >1 root, skip
         for point in self.tree.nodes:
             if point.is_selected:
@@ -737,7 +754,7 @@ class Tree:
 
         base.wait_window(top) # wait for a button to be pressed; check this still works ##
 
-    def make_file(self, event):
+    def make_file(self, event=None):
         '''Output tree data to file.'''
         if self.plant is None: # get plant ID when called for the first time
             self.popup()
@@ -823,7 +840,7 @@ class AnalyzerUI(tk.Frame):
             # create a csv to store analysis results
             timestamp = datetime.now()
             report_dest = self.output_path / f"report_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
-            header = ['filename', 'PR length', 'number of LRs', 'LR lengths', 'LR set point angles', 'primary LR density', 'material cost (total root length)', 'wiring cost', 'characteristic alpha', 'scaling distance to front']
+            header = ['filename', 'PR length', 'number of LRs', 'LR lengths', 'LR set point angles', 'primary LR density', 'material cost (total root length)', 'wiring cost', 'characteristic alpha', 'scaling distance to front', 'material (random)', 'wiring (random)', 'alpha (random)', 'scaling (random)']
 
             with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
                 writer = csv.writer(csvfile)
@@ -852,7 +869,7 @@ class AnalyzerUI(tk.Frame):
                     graph = json_graph.adjacency_graph(data)
 
                     # perform analysis
-                    report, front, actual, randoms = quantify.analyze(graph)
+                    report, front, actual, randoms, mrand, srand = quantify.analyze(graph)
                     report = [graph_name[:-5]] + report
 
                     with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
@@ -860,7 +877,7 @@ class AnalyzerUI(tk.Frame):
                         writer.writerow(report)
                         
                     # make pareto plot and save
-                    quantify.plot_all(front, actual, randoms, pareto_path)
+                    quantify.plot_all(front, actual, randoms, mrand, srand, pareto_path)
 
                 print(f"Processed file {i}/{len(self.tree_paths)}")
                 i += 1

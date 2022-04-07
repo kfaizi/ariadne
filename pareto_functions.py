@@ -510,7 +510,6 @@ def random_tree(G):
         
         random_trees.append(R)
 
-    
     for R in random_trees:
         # compute costs for each R, to compare with G
         mactual, sactual = graph_costs(R)

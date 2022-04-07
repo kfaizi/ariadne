@@ -310,7 +310,7 @@ def calc_density_LRs(G):
 
 
 
-def plot_all(front, actual, randoms, dest):
+def plot_all(front, actual, randoms, mrand, srand, dest):
     fig = plt.figure()
     ax = fig.add_subplot(111)
     # ax.set_title(title)
@@ -321,6 +321,8 @@ def plot_all(front, actual, randoms, dest):
     plt.plot(actual[0], actual[1], marker='x', markersize=12)
     for i in randoms:
         plt.plot(i[0], i[1], marker='+', color='green', markersize=4)
+
+    plt.plot(mrand, srand, marker='+', color='red', markersize=12)
 
     plt.savefig(dest, bbox_inches='tight', dpi=300)
     # plt.show()
@@ -391,16 +393,20 @@ def analyze(G):
     mactual, sactual = actual
     randoms = random_tree(G)
 
-    # distance of each plant to pareto front, and representative alpha
+    # centroid of randoms
+    mrand = np.mean([x[0] for x in randoms])
+    srand = np.mean([x[1] for x in randoms])
+
+    # distance of each plant to pareto front, and characteristic alpha
     # W* = total len of Steiner
     # D* = transport cost of Satellite
-    characteristic_alpha, scaling_distance = distance_from_front(front, actual)
-    # print('Characteristic alpha is:', characteristic_alpha)
-    # print('Distance to front is:', scaling_distance)
+    plant_alpha, plant_scaling = distance_from_front(front, actual)
 
-    results = [len_PR, num_LRs, lens_LRs, angles_LRs, density_LRs, mactual, sactual, characteristic_alpha, scaling_distance]
+    rand_alpha, rand_scaling = distance_from_front(front, (mrand, srand))
 
-    return results, front, actual, randoms
+    results = [len_PR, num_LRs, lens_LRs, angles_LRs, density_LRs, mactual, sactual, plant_alpha, plant_scaling, mrand, srand, rand_alpha, rand_scaling]
+
+    return results, front, actual, randoms, mrand, srand
 
     # think about dynamics/time-series
     # distance of center-of-mass of randoms to the pareto front
