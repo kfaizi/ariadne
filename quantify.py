@@ -154,7 +154,6 @@ def save_plot(path, name, title):
     # plt.savefig(name, bbox_inches='tight', dpi=300)
     plt.show()
 
-
 # path, name, title
 # targets = [
 #     ['/home/kian/Lab/9_20200205-214859_003_plantB_day13.txt', '9-B-13-rand.jpg', '+Fe_B_Day13'],
@@ -267,14 +266,7 @@ def calc_len_LRs(G):
         parent = list(G.predecessors(ordered[0]))
         assert len(parent) == 1
 
-        # and while we're here, grab the branch pt's parent too
-        branch_parent = list(G.predecessors(parent[0]))
-        assert len(branch_parent) == 1
-
         # now we can calculate the gravitropic set point angle
-        ######
-        # branch parent coordinates
-        p1 = np.array(G.nodes[branch_parent[0]]['pos'])
         # branch coordinates
         p2 = np.array(G.nodes[parent[0]]['pos'])
         # LR coordinates

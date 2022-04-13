@@ -154,7 +154,7 @@ class TracerUI(tk.Frame):
 
         # highlighting/insertion tests
         self.highlight_choice = 0 # tracks highlighted root when cycling
-        # self.canvas.bind("<Right>", self.cycle_highlights)
+        self.canvas.bind("<Right>", self.cycle_highlights)
         # self.canvas.bind('x', self.EG_highlight_root)
         # self.canvas.bind('<Button 2>', self.click_info)
 
@@ -208,14 +208,14 @@ class TracerUI(tk.Frame):
 
         # current tree
         self.tree = Tree(self.path) # instantiate first tree ## think about clearing/overwriting
-        
+
         self.history = deque(maxlen=6) # gets updated on every add_node()
 
         # enable buttons and add relevant keybinds
         self.canvas.bind("<Button 1>", self.place_node)
         
-        self.button_save.config(command=self.tree.make_file, state='normal')
-        self.canvas.bind('g', self.tree.make_file)
+        self.button_save.config(command=self.make_file, state='normal')
+        self.canvas.bind('g', self.make_file)
 
         self.button_next.config(command=self.next_day, state='normal')
         self.canvas.bind('e', self.next_day)
@@ -255,9 +255,6 @@ class TracerUI(tk.Frame):
             # adjust index and menubar
             self.frame_index = next_index
             self.day_indicator = f'Frame #{self.frame_index+1}'
-
-            # finish adding later
-            # tree.day = self.frame_index + 1
 
         except IndexError:
             self.day_indicator = 'End of GIF'
@@ -569,7 +566,49 @@ class TracerUI(tk.Frame):
             
             for i in targets:
                 self.canvas.itemconfig(i.shape_val, fill='green', outline='green', width='2')
-                
+
+
+    def make_file(self, event=None):
+        '''Output tree data to file.'''
+        if self.tree.plant is None: # get plant ID when called for the first time
+            self.tree.popup()
+            if self.tree.plant is None: # user didn't update ID (pressed cancel)
+                return
+
+        self.tree.index_LRs()
+        
+        # sort all nodes by depth
+        # ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
+        # then sort by ascending LR index, with PR last
+        # ordered_tree = sorted(ordered_tree, key=lambda node: (node.LR_index is None, node.LR_index))
+
+        # prepare output file
+        source = Path(self.tree.path.replace(" ","")).stem  # input name, no spaces
+        output_name = f"{source}_plant{self.tree.plant}_day{self.frame_index + 1}.json"
+        repo_path = Path("./").resolve()
+        output_path = repo_path / output_name
+
+        # convert Tree to NX graph
+        DG = nx.DiGraph()            
+        
+        # make ebunches (2-tuples of adjacent nodes)
+        ebunches = []
+        for node in self.tree.nodes:
+            # add nodes w/ positions and LR indices
+            DG.add_node(node.relcoords, pos=node.relcoords, LR_index=node.LR_index, root_deg=node.root_degree)
+
+            for child in node.children:
+                ebunches.append((node.relcoords, child.relcoords))
+
+        DG.add_edges_from(ebunches)
+        DG = nx.convert_node_labels_to_integers(DG)
+
+        s = json_graph.adjacency_data(DG)
+
+        with open(output_path, mode='w') as h:
+            json.dump(s, h)
+            print(f'wrote to output {output_name}')              
+
 
 class Node:
     '''An (x,y,0) point along a root.'''
@@ -601,7 +640,6 @@ class Tree:
     def __init__(self, path):
         self.nodes = []
         self.edges = []
-        self.day = 1  # track day of timeseries GIF
         self.plant = None  # ID of plant on plate (e.g. A-E, from left to right)
         self.is_shown = True # toggle display of edges
         self.top = None  # keep track of root node at top of tree
@@ -754,46 +792,7 @@ class Tree:
 
         base.wait_window(top) # wait for a button to be pressed; check this still works ##
 
-    def make_file(self, event=None):
-        '''Output tree data to file.'''
-        if self.plant is None: # get plant ID when called for the first time
-            self.popup()
-            if self.plant is None: # user didn't update ID (pressed cancel)
-                return
 
-        self.index_LRs()
-
-        # sort all nodes by depth
-        # ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
-        # then sort by ascending LR index, with PR last
-        # ordered_tree = sorted(ordered_tree, key=lambda node: (node.LR_index is None, node.LR_index))
-
-        # prepare output file
-        source = Path(self.path.replace(" ","")).stem  # input name, no spaces
-        output_name = f"{source}_plant{self.plant}_day{self.day}.json"
-        repo_path = Path("./").resolve()
-        output_path = repo_path / output_name
-
-        # convert Tree to NX graph
-        DG = nx.DiGraph()            
-        
-        # make ebunches (2-tuples of adjacent nodes)
-        ebunches = []
-        for node in self.nodes:
-
-            # add nodes w/ positions and LR indices
-            DG.add_node(node.relcoords, pos=node.relcoords, LR_index=node.LR_index, root_deg=node.root_degree)
-
-            for child in node.children:
-                ebunches.append((node.relcoords, child.relcoords))
-
-        DG.add_edges_from(ebunches)
-        DG = nx.convert_node_labels_to_integers(DG)
-
-        s = json_graph.adjacency_data(DG)
-
-        with open(output_path, mode='w') as h:
-            json.dump(s, h)
 
 
 
