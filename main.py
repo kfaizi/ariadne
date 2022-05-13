@@ -839,11 +839,6 @@ class AnalyzerUI(tk.Frame):
             # create a csv to store analysis results
             timestamp = datetime.now()
             report_dest = self.output_path / f"report_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
-            header = ['filename', 'PR length', 'number of LRs', 'LR lengths', 'LR set point angles', 'primary LR density', 'material cost (total root length)', 'wiring cost', 'characteristic alpha', 'scaling distance to front', 'material (random)', 'wiring (random)', 'alpha (random)', 'scaling (random)']
-
-            with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(header)
 
             # spawn relevant buttons
             # self.clear_button.pack(side='top', expand=True)
@@ -853,30 +848,33 @@ class AnalyzerUI(tk.Frame):
             self.output_info = f'Current files: ({len(self.tree_paths)})'
             i = 1
 
-            for file in self.tree_paths:
-                graph_name = file.split("/")[-1]
-                pareto_name = graph_name[:-5] + '_pareto.png'
-                plot_name = graph_name[:-5] + '_tree.png'
+            for json_file in self.tree_paths:
+                graph_name = json_file.split("/")[-1]
+                graph_name_noext = graph_name[:-5]
+                pareto_name = graph_name_noext + '_pareto.png'
+                # plot_name = graph_name_noext + '_tree.png'
                 pareto_path = self.output_path / pareto_name 
 
                 # update current file count list
                 self.output_info = self.output_info + '\n' + graph_name
                 self.output.config(text=self.output_info)
 
-                with open(file, mode='r') as h:
+                # load and process graph data
+                with open(json_file, mode='r') as h:
                     data = json.load(h)
                     graph = json_graph.adjacency_graph(data)
 
                     # perform analysis
-                    report, front, actual, randoms, mrand, srand = quantify.analyze(graph)
-                    report = [graph_name[:-5]] + report
+                    results, front, randoms = quantify.analyze(graph)
+                    results['filename'] = graph_name_noext
 
                     with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
-                        writer = csv.writer(csvfile)
-                        writer.writerow(report)
-                        
+                        w = csv.DictWriter(csvfile, fieldnames=results.keys())
+                        w.writeheader()
+                        w.writerow(results)
+
                     # make pareto plot and save
-                    quantify.plot_all(front, actual, randoms, mrand, srand, pareto_path)
+                    quantify.plot_all(front, [results['material cost'], results['wiring cost']], randoms, results['material (random)'], results['wiring (random)'], pareto_path)
 
                 print(f"Processed file {i}/{len(self.tree_paths)}")
                 i += 1

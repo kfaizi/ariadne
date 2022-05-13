@@ -17,6 +17,7 @@ import re
 import pickle
 import numpy as np
 from collections import Counter
+import copy
 
 # parser = argparse.ArgumentParser(description='select file')
 # parser.add_argument('-i', '--input', help='Full path to input file', required=True)
@@ -171,9 +172,6 @@ def save_plot(path, name, title):
 
 # save_plot('/Users/kianfaizi/projects/test-roots/BUGS/graph breaking and str/A/1_20200205-215035_009_plantA_day8.txt', 'test.jpg', 'test')
 
-
-
-
 # def pickle_test(target):
 #     with open(target, 'rb') as h:
 #         data = pickle.load(h)
@@ -218,22 +216,15 @@ def calc_root_len(G, nodes):
     return dist
 
 
-def calc_len_LRs(G):
-    '''Find the total length of each LR type in the graph.'''
-    # G = nx.DiGraph()
-    # G.add_edges_from([(1, 2), (2, 3)])
-    # G.add_edges_from([(2, 4)])
-    # G.add_edges_from([(2, 5)])
-    # G.add_edges_from([(5, 6)])
-    # G.nodes[1]['LR_index'] = None
-    # G.nodes[2]['LR_index'] = None
-    # G.nodes[3]['LR_index'] = None
-    # G.nodes[4]['LR_index'] = 0
-    # G.nodes[5]['LR_index'] = 1
-    # G.nodes[6]['LR_index'] = 1
-    
+def calc_len_LRs(H):
+    '''Find the total length of each LR type in the graph.'''    
+    # minimum length (px) for LR to be considered part of the network
+    # based on root hair emergence times
+    # threshold = 117
+    threshold = 0
+
     # dict of node ids : LR index, for each LR node
-    idxs = nx.get_node_attributes(G, 'LR_index')
+    idxs = nx.get_node_attributes(H, 'LR_index')
     idxs = {k:v for k,v in idxs.items() if v is not None} # drop empty (PR) nodes
 
     num_LRs = max(idxs.values()) + 1
@@ -244,62 +235,67 @@ def calc_len_LRs(G):
         # gather nodes corresponding to the current LR index
         selected = []
 
-        for node in G.nodes(data='LR_index'):
+        for node in H.nodes(data='LR_index'):
             if node[1] == i:
                 selected.append(node[0])
                 # make note of the root degree (should be the same for all nodes in loop)
-                current_degree = G.nodes[node[0]]['root_deg']
+                current_degree = H.nodes[node[0]]['root_deg']
         
         # to find the shallowest node in LR, we iterate through them
         # until we find the one whose parent has a lesser root degree
-        sub = G.subgraph(selected)
+        sub = H.subgraph(selected)
         for node in sub.nodes():
-            parent = list(G.predecessors(node))
+            parent = list(H.predecessors(node))
+            # print(node, parent)
             assert len(parent) == 1 # should be a tree
-            if G.nodes[parent[0]]['root_deg'] < current_degree:
+            if H.nodes[parent[0]]['root_deg'] < current_degree:
                 sub_top = node
 
         # now we can DFS to order all nodes by increasing depth
         ordered = list(nx.dfs_tree(sub, sub_top).nodes())
 
         # also include the parent of the shallowest node in the LR (the 'branch point')
-        parent = list(G.predecessors(ordered[0]))
+        parent = list(H.predecessors(ordered[0]))
         assert len(parent) == 1
 
-        # now we can calculate the gravitropic set point angle
-        # branch coordinates
-        p2 = np.array(G.nodes[parent[0]]['pos'])
-        # LR coordinates
-        p3 = np.array(G.nodes[ordered[0]]['pos'])
-
-        # recall: in our coordinate system, the top node is (0,0)
-        # x increases to the right; y increases downwards
-        # unit vector of gravity
-        g = np.array([0,1])
-        # normalized vector of LR emergence
-        lr = p3 - p2
-        norm_lr = np.linalg.norm(lr)
-        assert norm_lr > 0
-        lr = lr/norm_lr
-
-        # angle between LR emergence and the vector of gravity:
-        # this will be symmetric, whichever side of the PR the LR is on
-        theta = np.rad2deg(math.acos(np.dot(lr,g)))
-
         nodes_list = parent + ordered
-        # print(f'The ordered list of nodes that make up LR #{i} is:', nodes_list)
-        results[i] = [calc_root_len(G, nodes_list), theta]
 
-    assert num_LRs == len(results)
+        length = calc_root_len(H, nodes_list)
+
+        if length < threshold:
+            H.remove_nodes_from(ordered)
+        else:
+            # now we can calculate the gravitropic set point angle
+            # branch coordinates
+            p2 = np.array(H.nodes[parent[0]]['pos'])
+            # LR coordinates
+            p3 = np.array(H.nodes[ordered[0]]['pos'])
+
+            # recall: in our coordinate system, the top node is (0,0)
+            # x increases to the right; y increases downwards
+            # unit vector of gravity
+            g = np.array([0,1])
+            # normalized vector of LR emergence
+            lr = p3 - p2
+            norm_lr = np.linalg.norm(lr)
+            assert norm_lr > 0
+            lr = lr/norm_lr
+
+            # angle between LR emergence and the vector of gravity:
+            # this will be symmetric, whichever side of the PR the LR is on
+            theta = np.rad2deg(math.acos(np.dot(lr,g)))
+
+            # print(f'The ordered list of nodes that make up LR #{i} is:', nodes_list)
+            results[i] = [length, theta]
+
+    assert nx.is_tree(H)
     return results
     # add LR_index awareness: all, 1 deg, 2 deg, n deg
-
 
 
 def calc_density_LRs(G):
     pass    
     # add up to _n_ degrees
-
 
 
 def plot_all(front, actual, randoms, mrand, srand, dest):
@@ -340,12 +336,47 @@ def distance_from_front(front, actual_tree):
 
         distances[alpha_value] = max(material_ratio,transport_ratio)
 
+    # print(distances)
     closest = min(distances.items(), key=lambda x:x[1])
+    # print(closest)
 
     characteristic_alpha, scaling_distance = closest
 
     return characteristic_alpha, scaling_distance
 
+
+def pareto_calcs(H):
+    '''Perform Pareto-related calculations.'''
+    front, actual = pareto_front(H)
+    mactual, sactual = actual
+
+    # for debug: show mcost, scost
+    print(list(front.items())[0:5])
+
+    plant_alpha, plant_scaling = distance_from_front(front, actual)
+    randoms = random_tree(H)
+
+    # centroid of randoms
+    mrand = np.mean([x[0] for x in randoms])
+    srand = np.mean([x[1] for x in randoms])
+
+    rand_alpha, rand_scaling = distance_from_front(front, (mrand, srand))
+
+    # assemble dict for export
+    results = {
+        'material cost' : mactual,
+        'wiring cost' : sactual,
+        'alpha' : plant_alpha,
+        'scaling distance to front' : plant_scaling,
+        'material (random)' : mrand,
+        'wiring (random)' : srand,
+        'alpha (random)' : rand_alpha,
+        'scaling (random)' : rand_scaling
+    }
+
+    return results, front, randoms
+    
+    # [mactual, sactual, plant_alpha, plant_scaling, mrand, srand, rand_alpha, rand_scaling], front, actual, randoms, mrand, srand
 
 
 def analyze(G):
@@ -353,10 +384,13 @@ def analyze(G):
     # check that graph is indeed a tree (acyclic, undirected, connected)
     assert nx.is_tree(G)
 
-    # print(G.nodes(data=True))
+    # independent deep copy of G, with LRs below threshold excluded
+    H = copy.deepcopy(G)
 
+    # print(G.nodes(data=True))
+    
     # find top ("root") node
-    for node in G.nodes(data='pos'):
+    for node in H.nodes(data='pos'):
         # for some reason, this returns pos coords as a list and not a tuple. Didn't I save them as a tuple?
         if node[1] == [0,0]:
             root_node = node[0]
@@ -366,11 +400,11 @@ def analyze(G):
     assert root_node == 0
 
     # PR len
-    len_PR = calc_len_PR(G, root_node)
+    len_PR = calc_len_PR(H, root_node)
     # print('PR length is:', len_PR)
 
     # LR len/number
-    LR_info = calc_len_LRs(G)
+    LR_info = calc_len_LRs(H)
     num_LRs = len(LR_info)
     lens_LRs = [x[0] for x in LR_info.values()]
     angles_LRs = [x[1] for x in LR_info.values()]
@@ -381,24 +415,15 @@ def analyze(G):
     density_LRs = len_PR/num_LRs
     # print('LR density is:', len_PR/num_LRs)
 
-    front, actual = pareto_front(G)
-    mactual, sactual = actual
-    randoms = random_tree(G)
+    results, front, randoms = pareto_calcs(H)
 
-    # centroid of randoms
-    mrand = np.mean([x[0] for x in randoms])
-    srand = np.mean([x[1] for x in randoms])
-
-    # distance of each plant to pareto front, and characteristic alpha
-    # W* = total len of Steiner
-    # D* = transport cost of Satellite
-    plant_alpha, plant_scaling = distance_from_front(front, actual)
-
-    rand_alpha, rand_scaling = distance_from_front(front, (mrand, srand))
-
-    results = [len_PR, num_LRs, lens_LRs, angles_LRs, density_LRs, mactual, sactual, plant_alpha, plant_scaling, mrand, srand, rand_alpha, rand_scaling]
-
-    return results, front, actual, randoms, mrand, srand
+    results['PR length'] = len_PR
+    results['LR count'] = num_LRs
+    results['LR lengths'] = lens_LRs
+    results['LR angles'] = angles_LRs
+    results['primary LR density'] = density_LRs
+    
+    return results, front, randoms
 
     # think about dynamics/time-series
     # distance of center-of-mass of randoms to the pareto front

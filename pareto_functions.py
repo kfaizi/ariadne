@@ -7,11 +7,24 @@ from sys import argv
 from scipy.spatial.distance import euclidean
 import argparse
 import random
+import matplotlib.pyplot as plt
 import copy
 
 STEINER_MIDPOINTS = 10
 
 DEFAULT_ALPHAS = np.arange(0, 1.01, 0.01)
+
+def get_critical_nodes(G):
+    '''
+    Given a graph G, return a list of its critical nodes (the main root base, which is the first node
+    with index 0; and all root tips, which are nodes with degree 1).
+    '''
+    critical_nodes = []
+    for i in G.nodes():
+        if i == 0 or G.degree(i) == 1: # assumes root node is 0
+            critical_nodes.append(i)
+    
+    return critical_nodes
 
 def graph_costs(G, critical_nodes=None):
     '''
@@ -215,12 +228,7 @@ def satellite_tree(G):
     root_pos = G.nodes[root]['pos']
     H.nodes[root]['pos'] = root_pos
 
-    # critical nodes are the nodes that need to be connected to the root
-    # this method assumes that the lateral root tips are the critical points
-    critical_nodes = []
-    for u in G.nodes():
-        if G.degree(u) == 1:
-            critical_nodes.append(u)
+    critical_nodes = get_critical_nodes(G)
 
     # connect every critical node to the root with a direct edge
     for u in critical_nodes:
@@ -261,11 +269,7 @@ def pareto_steiner_fast(G, alpha):
     H.nodes[root]['pos'] = root_pos
     added_nodes = 1
 
-    # the critical nodes are the root, and the lateral root tips. All of the other nodes can be discarded
-    critical_nodes = []
-    for u in G.nodes():
-        if u == root or G.degree(u) == 1:
-            critical_nodes.append(u)
+    critical_nodes = get_critical_nodes(G)
 
     # critical nodes that have currently been added to the tree
     in_nodes = set([root])
@@ -438,11 +442,7 @@ def pareto_front(G):
     been trying to optimize wiring cost and conduction delay
     '''
 
-    # critical nodes are the main root base and the lateral root tips
-    critical_nodes = []
-    for u in G.nodes():
-        if G.degree(u) == 1:
-            critical_nodes.append(u)
+    critical_nodes = get_critical_nodes(G)
     
     # test: compute the actual mcost, scost for the original plant
     mactual, sactual = graph_costs(G, critical_nodes=critical_nodes)
@@ -464,7 +464,8 @@ def pareto_front(G):
         mcost, scost = graph_costs(H, critical_nodes=critical_nodes)
         front[alpha] = [mcost, scost]
 
-    return front, actual 
+    return front, actual
+
 
 def random_tree(G):
     '''
@@ -475,38 +476,29 @@ def random_tree(G):
     random_trees = [] # list of 1000 random trees
     costs = []
 
-    # full list of nodes of G, with info
-    all_nodes = list(G.nodes.data())
-    # TODO: this is stupid, just store index and access node data from G as needed. Fix later VVVV
-
-    # get critical nodes of G
-    G_critical_nodes = []
-    for i in G.nodes():
-        if i == 0 or G.degree(i) == 1: # assumes root node is 0
-            G_critical_nodes.append(all_nodes[i])
-
     for i in range(1000): # 1000 random trees
-        # copy list of critical nodes for manipulation
-        G_crits = copy.deepcopy(G_critical_nodes)
         # instantiate random tree
         R = nx.Graph()
+        G_critical_nodes = get_critical_nodes(G)
 
-        while len(G_crits) > 0:
+        while len(G_critical_nodes) > 0:
             # randomly draw 1 node from G's critical nodes
-            index = random.randrange(len(G_crits))
-            g = G_crits[index]
+            index = random.randrange(len(G_critical_nodes))
+            g = G_critical_nodes[index]
 
             if len(R.nodes) > 0: # if R is not empty
                 # add the new point AND a random edge
                 r_index = random.randrange(len(R.nodes)) # get a random node from R
                 r = list(R.nodes)[r_index]
-                R.add_node(g[0], pos=g[1]['pos'])
-                R.add_edge(r, g[0], weight=node_dist(R, r, g[0]))
+                R.add_node(g, pos=G.nodes.data()[g]['pos'])
+                R.add_edge(r, g, weight=node_dist(R, r, g))
+
             else: # if R is empty
                 # add the new point
-                R.add_node(g[0], pos=g[1]['pos'])
+                R.add_node(g, pos=G.nodes.data()[g]['pos'])
+            
             # remove added node from candidate list and repeat
-            del G_crits[index] 
+            del G_critical_nodes[index] 
         
         random_trees.append(R)
 
