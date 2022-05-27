@@ -87,7 +87,7 @@ class TracerUI(tk.Frame):
         self.title_label.pack()
 
         # left-hand menu
-        self.menu = tk.Frame(self.frame, width=175,bg='gray')
+        self.menu = tk.Frame(self.frame, width=175)
         self.menu.pack(side='top', fill='both')
 
         self.button_import = tk.Button(self.menu, text='Import image file', command=self.import_image)
