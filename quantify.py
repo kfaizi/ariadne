@@ -351,7 +351,7 @@ def pareto_calcs(H):
     mactual, sactual = actual
 
     # for debug: show mcost, scost
-    print(list(front.items())[0:5])
+    # print(list(front.items())[0:5])
 
     plant_alpha, plant_scaling = distance_from_front(front, actual)
     randoms = random_tree(H)

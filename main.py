@@ -1,7 +1,7 @@
 '''
 ARIADNE
 
-A GUI for segmenting root images from Arabidopsis seedlings grown on agar plates. 
+A GUI for segmenting root images from Arabidopsis seedlings grown on agar plates.
 
 @kfaizi on GitHub
 
@@ -56,7 +56,7 @@ class StartupUI:
 
         self.trace_button.pack(side='top', fill='both', expand=True)
         self.analyze_button.pack(side='bottom', fill='both', expand=True)
-    
+
     def to_trace(self):
         '''Swap frames to tracing mode.'''
         self.frame.destroy()
@@ -87,7 +87,7 @@ class TracerUI(tk.Frame):
         self.title_label.pack()
 
         # left-hand menu
-        self.menu = tk.Frame(self.frame, width=175,bg='gray')
+        self.menu = tk.Frame(self.frame, width=175)
         self.menu.pack(side='top', fill='both')
 
         self.button_import = tk.Button(self.menu, text='Import image file', command=self.import_image)
@@ -133,7 +133,7 @@ class TracerUI(tk.Frame):
         # keybinds for canvas mouse panning (linux)
         self.canvas.bind("<Alt-ButtonPress-1>", self.scroll_start)
         self.canvas.bind("<Alt-B1-Motion>", self.scroll_move)
-        
+
         # keybinds for canvas mouse panning (mac)
         self.canvas.bind("<Control-ButtonPress-1>", self.scroll_start)
         self.canvas.bind("<Control-B1-Motion>", self.scroll_move)
@@ -183,13 +183,13 @@ class TracerUI(tk.Frame):
     def scroll_move(self, event):
         '''Mouse panning track.'''
         self.canvas.scan_dragto(event.x, event.y, gain=1)
-    
+
     def motion_track(self, event):
         '''Mouse position reporting for the statusbar.'''
         if str(event.type) == 'Motion':
             # convert mouse position to canvas position
             self.canvas.curr_coords = (int(self.canvas.canvasx(event.x)), int(self.canvas.canvasy(event.y)))
-        
+
         # update statusbar contents
         self.statusbar.config(text=f'{self.canvas.curr_coords}, {self.day_indicator}, {self.override_indicator}, {self.inserting_indicator}')
 
@@ -213,14 +213,14 @@ class TracerUI(tk.Frame):
 
         # enable buttons and add relevant keybinds
         self.canvas.bind("<Button 1>", self.place_node)
-        
+
         self.button_save.config(command=self.make_file, state='normal')
         self.canvas.bind('g', self.make_file)
 
         self.button_next.config(command=self.next_day, state='normal')
         self.canvas.bind('e', self.next_day)
 
-        self.button_prev.config(command=self.previous_day, state='normal')    
+        self.button_prev.config(command=self.previous_day, state='normal')
         self.canvas.bind('q', self.previous_day)
 
         self.button_undo.config(command=self.undo, state='normal')
@@ -313,7 +313,7 @@ class TracerUI(tk.Frame):
                 if n.is_selected:
                     self.draw_edge(n, point)
                 n.deselect()
-   
+
         if draw is not None:
             self.draw_edge(draw[0], draw[1])
 
@@ -372,15 +372,15 @@ class TracerUI(tk.Frame):
                 print("Warning: can't insert with >1 point selected")
                 return
 
-            # turn on insertion mode    
+            # turn on insertion mode
             self.inserting = True
             self.inserting_indicator = 'inserting=ON'
             self.button_insert.config(state='active')
-            
+
             # turn on override too
             if not self.prox_override:
                 self.override()
-    
+
     def draw_edge(self, parent, child):
         '''Draw an edge between 2 nodes, and add it to the tree.'''
         # TODO: test that checks if drawn edge matches the data/hierarchy
@@ -393,7 +393,7 @@ class TracerUI(tk.Frame):
                 color = child.pedge_color
         else: # LR
             color = parent.pedge_color
-        
+
         edge = self.canvas.create_line(parent.coords[0], parent.coords[1], child.coords[0], child.coords[1], fill=color, state=f'{self.tree_flag}')
         self.tree.edges.append(edge)
         child.pedge = edge
@@ -401,7 +401,7 @@ class TracerUI(tk.Frame):
 
     def get_color(self):
         '''Fetch a new LR color from the palette.'''
-        palette = [ 
+        palette = [
             # seaborn colorblind
             '#0173B2', # dark blue
             '#DE8F05', # orange
@@ -416,7 +416,7 @@ class TracerUI(tk.Frame):
             # 'green', # PR
             # 'red', # selected node
             # 'white', # unselected node
-        
+
         pos = (self.colors - len(palette)) % len(palette)
         self.colors += 1
         return palette[pos] # next color
@@ -441,7 +441,7 @@ class TracerUI(tk.Frame):
                     n.shape_val = self.canvas.create_oval(x,y,x+2,y+2,width=1,fill="white", outline='white')
                 else:
                     n.shape_val = self.canvas.create_oval(x,y,x+2,y+2,width=2,fill="red", outline="red")
-            
+
             self.redraw()
 
         except IndexError as e: # end of history deque
@@ -481,13 +481,13 @@ class TracerUI(tk.Frame):
                 self.canvas.itemconfig(n.shape_val, fill="red", outline="red", width=2)
             else:
                 self.canvas.itemconfig(n.shape_val, fill="white", outline="white", width=1)
-    
+
 
     def find_root(self, n, excluded):
         '''Return all the nodes on the root that a node (n) belongs to, except any excluded nodes.'''
-        # TODO: can probably 
+        # TODO: can probably
         targets = set()
-        
+
         if len(n.children) > 1: # n is a branch point, so it belongs to multiple roots
             targets.add(n) # only highlight it
         else:
@@ -563,7 +563,7 @@ class TracerUI(tk.Frame):
                 for m in self.tree.nodes:
                     if m.LR_index == n.LR_index:
                         targets.append(m)
-            
+
             for i in targets:
                 self.canvas.itemconfig(i.shape_val, fill='green', outline='green', width='2')
 
@@ -576,7 +576,7 @@ class TracerUI(tk.Frame):
                 return
 
         self.tree.index_LRs()
-        
+
         # sort all nodes by depth
         # ordered_tree = sorted(self.nodes, key=lambda node: node.depth)
         # then sort by ascending LR index, with PR last
@@ -589,8 +589,8 @@ class TracerUI(tk.Frame):
         output_path = repo_path / output_name
 
         # convert Tree to NX graph
-        DG = nx.DiGraph()            
-        
+        DG = nx.DiGraph()
+
         # make ebunches (2-tuples of adjacent nodes)
         ebunches = []
         for node in self.tree.nodes:
@@ -607,7 +607,7 @@ class TracerUI(tk.Frame):
 
         with open(output_path, mode='w') as h:
             json.dump(s, h)
-            print(f'wrote to output {output_name}')              
+            print(f'wrote to output {output_name}')
 
 
 class Node:
@@ -689,7 +689,7 @@ class Tree:
             new.root_degree = curr.root_degree
             new.LR_index = curr.LR_index
             new.pedge_color = curr.pedge_color
-        
+
         else: # use root_choice
             new.children.append(self.root_choice)
             curr.children.remove(self.root_choice)
@@ -697,18 +697,18 @@ class Tree:
 
             # if self.root_choice.root_degree == 0:
             #     new.root_degree = 0
-            
+
             # if self.root_choice.LR_index is not None:
             #     new.LR_index = self.root_choice.LR_index
 
             new.root_degree = self.root_choice.root_degree
             new.LR_index = self.root_choice.LR_index
-            new.pedge_color = self.root_choice.pedge_color       
-            
+            new.pedge_color = self.root_choice.pedge_color
+
         new.children[0].depth += 1
         self.DFS(new.children[0])
 
-     
+
 ##########################
 
     def add_child(self, curr, new):
@@ -716,7 +716,7 @@ class Tree:
         if len(curr.children) == 0:
             if curr.root_degree == 0:
                 new.root_degree = 0
-        
+
         curr.children.append(new)
 
     def DFS(self, root):
@@ -735,7 +735,7 @@ class Tree:
     def index_LRs(self):
         '''Walk tree breadth-first and assign indices to lateral roots.'''
         # assumption 1: time-series data, indexed often (so primary LRs will always get indexed before secondary LRs)
-        # assumption 2: no LRs of higher degree than secondary 
+        # assumption 2: no LRs of higher degree than secondary
         q = Queue()
         q.put(self.top)
 
@@ -765,7 +765,7 @@ class Tree:
 
         label = tk.Label(top, text="Please select a plant ID:")
         label.pack(side='top', fill='both', expand=True)
-        
+
         v = tk.StringVar() # holds plant ID
 
         a = tk.Radiobutton(top, text='A', variable=v, value='A', bg='white', fg='black')
@@ -779,7 +779,7 @@ class Tree:
         tk.Radiobutton(top, text='D', variable=v, value='D', bg='white', fg='black').pack()
 
         tk.Radiobutton(top, text='E', variable=v, value='E', bg='white', fg='black').pack()
-        
+
         def updater():
             top.destroy()
             self.plant = v.get()
@@ -818,7 +818,7 @@ class AnalyzerUI(tk.Frame):
         # these buttons are hidden until later
         # self.analyze_button = tk.Button(self.left_frame, text='Generate report', command=self.generate_report)
         # self.clear_button = tk.Button(self.left_frame, text='Clear', command=self.clear)
- 
+
         # right-hand output
         self.right_frame = tk.Frame(self.frame)
         self.right_frame.pack(side='right', fill='both', expand=True)
@@ -826,7 +826,7 @@ class AnalyzerUI(tk.Frame):
         self.output_info = 'Current files:'
         self.output = tk.Label(self.right_frame, text=self.output_info)
         self.output.pack(side='top', fill='both', expand=True)
-        
+
     def import_file(self):
         '''Load input files.'''
         self.tree_paths = tk.filedialog.askopenfilenames(parent=self.base, initialdir='./', title='Select files to analyze:')
@@ -835,7 +835,7 @@ class AnalyzerUI(tk.Frame):
             return
         else:
             self.output_path = Path(tk.filedialog.askdirectory(parent=self.base, initialdir='./', title='Select an output folder:'))
-            
+
             # create a csv to store analysis results
             timestamp = datetime.now()
             report_dest = self.output_path / f"report_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
@@ -853,7 +853,7 @@ class AnalyzerUI(tk.Frame):
                 graph_name_noext = graph_name[:-5]
                 pareto_name = graph_name_noext + '_pareto.png'
                 # plot_name = graph_name_noext + '_tree.png'
-                pareto_path = self.output_path / pareto_name 
+                pareto_path = self.output_path / pareto_name
 
                 # update current file count list
                 self.output_info = self.output_info + '\n' + graph_name
