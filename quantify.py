@@ -412,8 +412,8 @@ def analyze(G):
     # print('Set point angles are:', angles_LRs)
 
     # primary LR density
-    density_LRs = len_PR/num_LRs
-    # print('LR density is:', len_PR/num_LRs)
+    density_LRs = num_LRs/len_PR
+    # print('LR density is:', density_LRs)
 
     results, front, randoms = pareto_calcs(H)
 

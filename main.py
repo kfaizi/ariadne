@@ -11,7 +11,11 @@ try:except for dialog errors?
 easier selection of nearby points
 '''
 
+from dataclasses import field
 import tkinter as tk
+import tkinter.font as tkfont
+# from tkinter import ttk
+
 from tkinter import filedialog
 from PIL import Image, ImageTk, ImageSequence
 import quantify
@@ -43,12 +47,21 @@ class StartupUI:
         self.frame = tk.Frame(self.base)
         self.frame.pack(side='top', fill='both', expand=True)
 
+        # obj = tkfont.Font("fixed")
+        # obj.config(size=48)
+
         # salutation
         self.title_frame = tk.Frame(self.frame)
         self.title_frame.pack()
 
-        self.title_label = tk.Label(self.frame, text='Welcome to Ariadne!')
+        self.title_label = tk.Label(self.frame, text='Welcome to Ariadne!', font=("fixed", 48))
         self.title_label.pack(side='top', fill='both', expand=True)
+
+
+        font = tkfont.Font(font=self.title_label["font"])
+        print(font.actual())
+        print(tkfont.Font(font='TkDefaultFont').actual())
+
 
         # buttons
         self.trace_button = tk.Button(self.frame, text='Trace', command=self.to_trace)
@@ -91,8 +104,8 @@ class TracerUI(tk.Frame):
         self.menu.pack(side='top', fill='both')
 
         self.button_import = tk.Button(self.menu, text='Import image file', command=self.import_image)
-        self.button_next = tk.Button(self.menu, text='Next day (e)', command=None, state='disabled')
-        self.button_prev = tk.Button(self.menu, text='Prev day (q)', command=None, state='disabled')
+        self.button_next = tk.Button(self.menu, text='Next frame (e)', command=None, state='disabled')
+        self.button_prev = tk.Button(self.menu, text='Prev frame (q)', command=None, state='disabled')
         self.button_override = tk.Button(self.menu, text='Override (r)', command=None, state='disabled')
         self.button_insert = tk.Button(self.menu, text='Insert (i)', command=None, state='disabled')
         self.button_undo = tk.Button(self.menu, text='Undo (Ctrl-z)', command=None, state='disabled')
@@ -828,7 +841,7 @@ class AnalyzerUI(tk.Frame):
         self.output.pack(side='top', fill='both', expand=True)
 
     def import_file(self):
-        '''Load input files.'''
+        '''Load tree data and analyze it.'''
         self.tree_paths = tk.filedialog.askopenfilenames(parent=self.base, initialdir='./', title='Select files to analyze:')
 
         if len(self.tree_paths) == 0: # no selection made
@@ -836,48 +849,65 @@ class AnalyzerUI(tk.Frame):
         else:
             self.output_path = Path(tk.filedialog.askdirectory(parent=self.base, initialdir='./', title='Select an output folder:'))
 
-            # create a csv to store analysis results
+            # track current file count
+            self.output_info = f'Current files: ({len(self.tree_paths)})'
+            i = 1
+
+            # prepare a csv to store analysis results
             timestamp = datetime.now()
             report_dest = self.output_path / f"report_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
+            with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
+                fieldnames = [
+                    'PR length',
+                    'LR count',
+                    'LR lengths',
+                    'LR angles',
+                    'primary LR density',
+                    'alpha',
+                    'material cost',
+                    'wiring cost',
+                    'scaling distance to front',
+                    'alpha (random)',
+                    'material (random)',
+                    'wiring (random)',
+                    'scaling (random)',
+                ]
+                w = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                w.writeheader()
+
+                # analyze input file(s)
+                for json_file in self.tree_paths:
+                    graph_name = json_file.split("/")[-1]
+                    graph_name_noext = graph_name[:-5]
+                    pareto_name = graph_name_noext + '_pareto.png'
+                    # plot_name = graph_name_noext + '_tree.png'
+                    pareto_path = self.output_path / pareto_name
+
+                    # update current file count list
+                    self.output_info = self.output_info + '\n' + graph_name
+                    self.output.config(text=self.output_info)
+
+                    # load and process graph data
+                    with open(json_file, mode='r') as h:
+                        data = json.load(h)
+                        graph = json_graph.adjacency_graph(data)
+
+                        # perform analysis
+                        results, front, randoms = quantify.analyze(graph)
+                        results['filename'] = graph_name_noext
+
+                        # append to the results csv file
+                        w.writerow(results)
+
+                        # make pareto plot and save
+                        quantify.plot_all(front, [results['material cost'], results['wiring cost']], randoms, results['material (random)'], results['wiring (random)'], pareto_path)
+
+                    print(f"Processed file {i}/{len(self.tree_paths)}")
+                    i += 1
 
             # spawn relevant buttons
             # self.clear_button.pack(side='top', expand=True)
             # self.analyze_button.pack(side='top', expand=True)
-
-            # add current file count
-            self.output_info = f'Current files: ({len(self.tree_paths)})'
-            i = 1
-
-            for json_file in self.tree_paths:
-                graph_name = json_file.split("/")[-1]
-                graph_name_noext = graph_name[:-5]
-                pareto_name = graph_name_noext + '_pareto.png'
-                # plot_name = graph_name_noext + '_tree.png'
-                pareto_path = self.output_path / pareto_name
-
-                # update current file count list
-                self.output_info = self.output_info + '\n' + graph_name
-                self.output.config(text=self.output_info)
-
-                # load and process graph data
-                with open(json_file, mode='r') as h:
-                    data = json.load(h)
-                    graph = json_graph.adjacency_graph(data)
-
-                    # perform analysis
-                    results, front, randoms = quantify.analyze(graph)
-                    results['filename'] = graph_name_noext
-
-                    with open(report_dest, 'a', encoding='utf-8', newline='') as csvfile:
-                        w = csv.DictWriter(csvfile, fieldnames=results.keys())
-                        w.writeheader()
-                        w.writerow(results)
-
-                    # make pareto plot and save
-                    quantify.plot_all(front, [results['material cost'], results['wiring cost']], randoms, results['material (random)'], results['wiring (random)'], pareto_path)
-
-                print(f"Processed file {i}/{len(self.tree_paths)}")
-                i += 1
 
             # show confirmation message
             print('Finished.')
